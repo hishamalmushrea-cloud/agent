@@ -69,10 +69,19 @@ def test_diagnostics_endpoint():
     assert isinstance(body["results"], list) and len(body["results"]) > 0
 
 
-def test_security_rejects_unknown_host_by_default():
-    # With bind_localhost_only, a non-localhost Host header is forbidden.
-    r = client.get("/api/health", headers={"host": "evil.example.com"})
-    assert r.status_code in (200, 403)  # health is public but host check applies
+def test_security_allows_preview_and_rejects_unknown_host():
+    from agent_platform.server.app import _host_allowed
+
+    # Trusted proxy (preview) and loopback are allowed.
+    assert _host_allowed("8000-abc123.e2b.app", "", ())
+    assert _host_allowed("localhost:8000", "", ())
+    # A random / unknown host is rejected (host check, not just token).
+    assert not _host_allowed("evil.example.com", "", ())
+    # Unless the request originates from a loopback client (the proxy tunnel).
+    assert _host_allowed("evil.example.com", "127.0.0.1", ())
+    # GUI root itself is not host-gated (served to the trusted proxy).
+    r = client.get("/", headers={"host": "8000-abc123.e2b.app"})
+    assert r.status_code == 200
 
 
 def test_security_requires_token_when_configured(monkeypatch):

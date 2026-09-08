@@ -38,6 +38,37 @@ class ActionExecutor:
                 "args": a.arguments.get("args", [])}),
             ActionKind.CLOSE_APPLICATION: ("close_application", lambda a: {
                 "name": a.target or a.arguments.get("name", "")}),
+            # Desktop / physical input (Windows, via ui_input)
+            ActionKind.CLICK: ("ui_input", lambda a: {
+                "action": "click", "x": a.arguments.get("x"),
+                "y": a.arguments.get("y"), "clicks": a.arguments.get("clicks", 1),
+                "window": a.target or a.arguments.get("window", "")}),
+            ActionKind.DOUBLE_CLICK: ("ui_input", lambda a: {
+                "action": "double_click", "x": a.arguments.get("x"),
+                "y": a.arguments.get("y"), "window": a.target or a.arguments.get("window", "")}),
+            ActionKind.RIGHT_CLICK: ("ui_input", lambda a: {
+                "action": "right_click", "x": a.arguments.get("x"),
+                "y": a.arguments.get("y"), "window": a.target or a.arguments.get("window", "")}),
+            ActionKind.MOVE_MOUSE: ("ui_input", lambda a: {
+                "action": "move_mouse", "x": a.arguments.get("x"),
+                "y": a.arguments.get("y"), "window": a.target or a.arguments.get("window", "")}),
+            ActionKind.DRAG: ("ui_input", lambda a: {
+                "action": "drag", "x": a.arguments.get("x"),
+                "y": a.arguments.get("y"), "text": a.arguments.get("from", ""),
+                "window": a.target or a.arguments.get("window", "")}),
+            ActionKind.SCROLL: ("ui_input", lambda a: {
+                "action": "scroll", "x": a.arguments.get("x"), "y": a.arguments.get("y"),
+                "clicks": a.arguments.get("clicks", -3),
+                "window": a.target or a.arguments.get("window", "")}),
+            ActionKind.TYPE_TEXT: ("ui_input", lambda a: {
+                "action": "type_text", "text": a.target or a.arguments.get("text", ""),
+                "window": a.arguments.get("window", "")}),
+            ActionKind.PRESS_KEY: ("ui_input", lambda a: {
+                "action": "press_key", "text": a.target or a.arguments.get("key", ""),
+                "window": a.arguments.get("window", "")}),
+            ActionKind.HOTKEY: ("ui_input", lambda a: {
+                "action": "hotkey", "text": a.target or a.arguments.get("keys", ""),
+                "window": a.arguments.get("window", "")}),
             # Filesystem
             ActionKind.READ_FILE: ("read_file", lambda a: {"path": a.target or a.arguments.get("path")}),
             ActionKind.WRITE_FILE: ("write_file", lambda a: {
@@ -92,6 +123,18 @@ class ActionExecutor:
                 "url": a.target or a.arguments.get("url", ""), "action": "navigate"}),
             ActionKind.BROWSER_READ: ("browser_agent", lambda a: {
                 "url": a.target or a.arguments.get("url", ""), "action": "extract"}),
+            ActionKind.BROWSER_CLICK: ("browser_agent", lambda a: {
+                "url": a.target or a.arguments.get("url", ""), "action": "click",
+                "selector": a.arguments.get("selector", ""),
+                "text": a.arguments.get("text", "")}),
+            ActionKind.BROWSER_TYPE: ("browser_agent", lambda a: {
+                "url": a.target or a.arguments.get("url", ""), "action": "type",
+                "selector": a.arguments.get("selector", ""),
+                "value": a.arguments.get("value", "")}),
+            ActionKind.BROWSER_SCROLL: ("browser_agent", lambda a: {
+                "url": a.target or a.arguments.get("url", ""), "action": "scroll",
+                "selector": a.arguments.get("selector", ""),
+                "value": a.arguments.get("value", "")}),
             ActionKind.BROWSER_SCREENSHOT: ("browser_agent", lambda a: {
                 "url": a.target or a.arguments.get("url", ""), "action": "screenshot",
                 "value": a.arguments.get("value", "")}),

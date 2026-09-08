@@ -43,8 +43,15 @@ but not built" unless explicitly stated.
   `https://arena.ai` + local grants instead of faking one.
 - **This sandbox is Linux**, so Windows-native pieces (UI automation via win32,
   native app-open, WebView2, full OCR, live desktop capture) report
-  `LIMITATION` in `/api/diagnostics` rather than pretending to work.  On a
-  real Windows host they activate.
+  `LIMITATION` in `/api/diagnostics` rather than pretending to work.
+- The Windows UI tools are **fully wired**: every Unified Action kind now maps
+  to a real, registered tool (CLICK/TYPE_TEXT/PRESS_KEY/HOTKEY/SCROLL/MOVE_MOUSE/
+  DRAG → `ui_input`; BROWSER_* → `browser_agent`; apps → `open_application`).
+  To **prove** they work on a real Windows host, run
+  `verify_windows.ps1` (opens Notepad, types text, inspects the window, and
+  screenshots + OCRs), after `setup_windows.ps1` installs
+  pywinauto/pywin32/pyautogui/playwright.  That script is the on-device proof
+  that the Windows path actually works.
 
 ## How to run
 

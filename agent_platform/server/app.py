@@ -104,22 +104,44 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 
+# Hosts that are always allowed under bind_localhost_only, alongside the
+# standard loopback names.  .e2b.app covers the Arena live-preview proxy; the
+# configured prefixes cover real internet exposure where the user opts in.
+_LOOPBACK = ("127.0.0.1", "localhost", "::1", "0.0.0.0")
+
+
+def _host_allowed(host: str, client_host: str, extra: tuple[str, ...] = ()) -> bool:
+    """True if a request host/client is acceptable under localhost-only mode."""
+    if not host and not client_host:
+        return False
+    h = (host or "").split(":")[0].lower()
+    if h in _LOOPBACK:
+        return True
+    if client_host in _LOOPBACK:
+        return True
+    if h.endswith(".e2b.app"):  # trusted live-preview proxy
+        return True
+    for p in extra:
+        if h == p.lower() or h.endswith("." + p.lower()):
+            return True
+    return False
+
+
 class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         settings = _c()["settings"]
+        path = request.url.path
 
-        # 1. localhost-only host check.
-        if settings.bind_localhost_only:
+        # 1. localhost-only host check (skip for the un-authenticated GUI so the
+        #    trusted proxy can serve it; the sensitive /api stays protected).
+        if settings.bind_localhost_only and path != "/":
             host = request.headers.get("host", "")
             client_host = request.client.host if request.client else ""
-            allowed_prefixes = ("127.0.0.1", "localhost", "::1")
-            if not (host.split(":")[0] in ("127.0.0.1", "localhost", "::1")
-                    or client_host in allowed_prefixes
-                    or any(host.startswith(p) for p in allowed_prefixes)):
+            extra = tuple(p.strip() for p in (settings.allowed_hosts or "").replace(" ", "").split(",") if p.strip())
+            if not _host_allowed(host, client_host, extra):
                 return JSONResponse({"error": "Forbidden host (localhost only)"}, status_code=403)
 
         # 2. Token auth (if configured). Public/read endpoints are exempt.
-        path = request.url.path
         public = {"/", "/styles.css", "/app.js", "/api/health", "/api/settings"}
         if settings.auth_token and path not in public and path.startswith("/api"):
             tok = request.headers.get("authorization", "")

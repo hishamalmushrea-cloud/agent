@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -155,6 +156,37 @@ def test_all_action_kinds_complete():
     for needed in ("click", "type_text", "open_application", "write_file",
                    "run_command", "screenshot", "wait", "press_key"):
         assert needed in kinds
+
+
+def _tmp_log() -> AuditLogger:
+    return AuditLogger(path=Path(tempfile.mkdtemp()))
+
+
+def test_every_action_kind_maps_to_registered_tool():
+    """Every declared action must resolve to an executor that points at a real,
+    registered tool — so the protocol is actually executable."""
+    reg = register_all()
+    ex = ActionExecutor(reg, PermissionMatrix("safe"), _tmp_log())
+    mapped = ex._build_map()
+    handled_early = {ActionKind.STOP, ActionKind.ASK_USER, ActionKind.VERIFY}
+    for kind in ActionKind:
+        if kind in handled_early:
+            continue
+        assert kind in mapped, f"action {kind.value} has no executor mapping"
+        tool_name, _ = mapped[kind]
+        assert tool_name in reg.names(), (
+            f"action {kind.value} maps to tool '{tool_name}' which is not registered")
+
+
+def test_ui_input_actions_map_to_ui_input_tool():
+    ex = ActionExecutor(register_all(), PermissionMatrix("safe"), _tmp_log())
+    m = ex._build_map()
+    assert m[ActionKind.CLICK][0] == "ui_input"
+    assert m[ActionKind.TYPE_TEXT][0] == "ui_input"
+    assert m[ActionKind.PRESS_KEY][0] == "ui_input"
+    assert m[ActionKind.HOTKEY][0] == "ui_input"
+    assert m[ActionKind.SCROLL][0] == "ui_input"
+    assert m[ActionKind.BROWSER_CLICK][0] == "browser_agent"
 
 
 def test_executor_read_file(tmp_path):

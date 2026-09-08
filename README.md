@@ -33,7 +33,12 @@ goal, the agent plans, then executes on the machine — showing the conversation
 **and** the live tool steps inline.  Open `http://0.0.0.0:8000` to try it.
 
 ### Run it like a desktop app on Windows
-Double-click **`start_windows.bat`** (or run **`start_windows.ps1`**), or:
+Double-click **`start_windows.bat`**, or set up + verify from PowerShell:
+```powershell
+powershell -ExecutionPolicy Bypass -File setup_windows.ps1     # install all deps (UI/Win32/browser)
+powershell -ExecutionPolicy Bypass -File verify_windows.ps1    # prove it works ON this Windows box
+```
+Then either:
 ```bash
 python run.py           # starts the server and opens the chat app
 python desktop_app.py   # browser-like native window (loads arena.ai + controller)
@@ -193,7 +198,10 @@ discovery, metadata, permissions are automatic):
 - **system** — `system_info, network_status, get_env, get_clipboard, random_password`
 - **web** — `fetch_page, web_search, browser_control` (Playwright, optional)
 - **windows** — `open_application, close_application, focus_window,
-  inspect_window, ui_interact` (pywinauto/Win32 — Windows only, no-op on non-Windows)
+  inspect_window, ui_interact, ui_input` (click/type/keys/scroll/drag via
+  pywinauto + pyautogui — Windows only, honest "not on Windows" on other hosts)
+- **control** — `browser_agent` (Playwright hybrid DOM→a11y→OCR), `wait`,
+  `screenshot`, `ocr`, `read_screen`
 
 Each tool declares a `ToolSpec` (name, description, params, permission) so the
 agent *discovers* capabilities and the permission layer *classifies* risk.

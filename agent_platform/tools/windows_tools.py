@@ -101,21 +101,16 @@ class FocusWindowTool(Tool):
         if not _windows():
             return _not_windows("focus_window")
         try:
-            # Best-effort via pywinauto if present, else ctypes SetForegroundWindow.
-            try:
-                import pywinauto  # noqa: F401
-                from pywinauto import Desktop  # type: ignore
+            import pywinauto
+            from pywinauto import Desktop  # type: ignore
 
-                win = Desktop(backend="uia").window(title_re=f".*{title}.*").exists()
-                win_handle = Desktop(backend="uia").window(title_re=f".*{title}.*")
-                win_handle.set_focus()
-                return self.ok(f"Focused window matching '{title}'")
-            except ImportError:
-                import ctypes
-
-                # Minimal: find window by title via EnumWindows is complex; here we
-                # just report we could not locate a handle without pywinauto.
-                return self.fail("pywinauto not installed; cannot focus window")
+            win = Desktop(backend="uia").window(title_re=f".*{title}.*")
+            win.set_focus()
+            return self.ok(f"Focused window matching '{title}'")
+        except ImportError:
+            return self.fail(
+                "pywinauto not installed; cannot focus window. Install with "
+                "pip install pywinauto")
         except Exception as exc:  # noqa: BLE001
             return self.fail(str(exc))
 
@@ -192,10 +187,97 @@ class InteractWindowTool(Tool):
             return self.fail(str(exc))
 
 
+class UIScreenInputTool(Tool):
+    """Low-level mouse/keyboard input on the whole desktop.
+
+    This is the physical layer for the Unified Action Protocol's input actions
+    (CLICK, TYPE_TEXT, PRESS_KEY, HOTKEY, SCROLL, MOVE_MOUSE, DRAG).  It uses
+    ``pyautogui`` (guarded import) and, on a non-Windows host, returns an honest
+    "requires Windows" result.  Coordinates are optional; without them the tool
+    acts on the focused window's centre.
+    """
+
+    spec = ToolSpec(
+        name="ui_input",
+        description="Send low-level mouse/keyboard input: click, double_click, "
+        "right_click, move_mouse, drag, scroll, type_text, press_key, hotkey. "
+        "Coordinates optional (x,y); optional 'window' title to focus first. "
+        "Last-resort physical input.",
+        category="windows",
+        parameters={
+            "action": "str (required): click|double_click|right_click|move_mouse|"
+                      "drag|scroll|type_text|press_key|hotkey",
+            "x": "int (optional)", "y": "int (optional)",
+            "text": "str (optional): text to type / key to press / hotkey combo",
+            "clicks": "int (optional, default 1)", "window": "str (optional): title to focus",
+        },
+        permission=PermissionLevel.SENSITIVE,
+    )
+
+    def run(self, action: str = "", x: int | None = None, y: int | None = None,
+            text: str = "", clicks: int = 1, window: str = "", **kwargs: Any) -> ToolResult:
+        if not _windows():
+            return _not_windows("ui_input")
+        try:
+            import pyautogui  # type: ignore
+        except ImportError:
+            return self.fail(
+                "pyautogui not installed. Run: pip install pyautogui  (Windows only)")
+        # Adjust for Windows multi-monitor / DPI: pyautogui.FAILSAFE protects us.
+        if getattr(pyautogui, "FAILSAFE", True):
+            pyautogui.FAILSAFE = True
+        # Optionally focus a window first.
+        if window:
+            focus_ok = self._focus(window)
+            if not focus_ok:
+                return self.fail(f"could not focus window '{window}'")
+        try:
+            if action == "click":
+                pyautogui.click(x, y, clicks=clicks)
+            elif action == "double_click":
+                pyautogui.doubleClick(x, y)
+            elif action == "right_click":
+                pyautogui.rightClick(x, y)
+            elif action == "move_mouse":
+                pyautogui.moveTo(x, y, duration=0.2)
+            elif action == "drag":
+                px, py = x or 0, y or 0
+                if isinstance(text, str) and "," in text:
+                    sx, sy = (int(v) for v in text.split(",")[:2])
+                    pyautogui.moveTo(sx, sy)
+                pyautogui.dragTo(px, py, duration=0.5)
+            elif action == "scroll":
+                pyautogui.scroll(clicks, x, y)
+            elif action == "type_text":
+                pyautogui.typewrite(str(text), interval=0.02)
+            elif action == "press_key":
+                pyautogui.press(str(text))
+            elif action == "hotkey":
+                pyautogui.hotkey(*str(text).split("+"))
+            else:
+                return self.fail(f"Unsupported action '{action}'")
+            return self.ok(f"ui_input:{action} done")
+        except Exception as exc:  # noqa: BLE001
+            return self.fail(str(exc))
+
+    @staticmethod
+    def _focus(title: str) -> bool:
+        try:
+            import pywinauto
+            from pywinauto import Desktop  # type: ignore
+
+            win = Desktop(backend="uia").window(title_re=f".*{title}.*")
+            win.set_focus()
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+
 ALL_TOOLS: list[type[Tool]] = [
     OpenApplicationTool,
     CloseApplicationTool,
     FocusWindowTool,
     InspectWindowTool,
     InteractWindowTool,
+    UIScreenInputTool,
 ]
