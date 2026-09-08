@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; width: 320px; margin: 0; background: #0d1117; color: #e6edf3; font-size: 13px; }
+    .wrap { padding: 14px; }
+    h1 { font-size: 15px; margin: 0 0 4px; }
+    .sub { color: #8b949e; font-size: 11px; margin-bottom: 12px; }
+    .status { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #161b22; border: 1px solid #2a3441; border-radius: 8px; margin-bottom: 10px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #8b949e; }
+    .dot.ok { background: #3fb950; }
+    .dot.bad { background: #f85149; }
+    label { display: block; margin: 8px 0 4px; color: #8b949e; font-size: 11px; }
+    input, textarea { width: 100%; background: #0d1117; border: 1px solid #2a3441; color: #e6edf3; border-radius: 6px; padding: 7px 9px; font-family: monospace; }
+    button { width: 100%; margin-top: 10px; background: #2f81f7; border: none; color: #fff; padding: 9px; border-radius: 7px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #4f8cff; }
+    .out { margin-top: 10px; max-height: 140px; overflow-y: auto; background: #161b22; border: 1px solid #2a3441; border-radius: 7px; padding: 8px; font-family: monospace; font-size: 11px; white-space: pre-wrap; color: #c9d1d9; }
+    .hint { color: #8b949e; font-size: 11px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🔗 Arena → Local Windows Agent</h1>
+    <div class="sub">اربط Arena (العقل) بالوكيل المحلي (الأدوات) عبر جسر آمن.</div>
+
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">…</span></div>
+
+    <label>عنوان الوكيل المحلي</label>
+    <input id="baseUrl" value="http://127.0.0.1:8000" />
+
+    <label>الأمر / الوصف (يُرسل للوكيل المحلي)</label>
+    <textarea id="prompt" rows="3" placeholder="مثال: افتح Notepad واكتب مرحبا"></textarea>
+
+    <button id="send">إرسال للوكيل المحلي ⚡</button>
+    <div class="out" id="out"></div>
+    <div class="hint">يتصل بالجسر المحلي فقط. لا يرسل أي شيء للإنترنت.</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

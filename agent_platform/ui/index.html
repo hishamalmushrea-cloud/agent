@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>وكيل الكمبيوتر المستقل — Windows Agent</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- Sidebar (conversations + status) -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <button class="btn primary new-chat" id="newChat">+ محادثة جديدة</button>
+      </div>
+
+      <!-- Agent status -->
+      <div class="status-card" id="agentStatusCard">
+        <div class="sc-title">حالة الوكيل</div>
+        <div class="agent-status-row">
+          <span class="pulse" id="statusDot"></span>
+          <span id="agentStatus">IDLE</span>
+        </div>
+        <div class="status-grid">
+          <div><span class="k">العقل</span><b id="brainLabel">—</b></div>
+          <div><span class="k">الأدوات</span><b id="toolCount">—</b></div>
+          <div><span class="k">الاتصال</span><b id="conn">offline</b></div>
+        </div>
+        <div class="status-grid">
+          <div><span class="k">أمور بانتظار</span><b id="runningCount">0</b></div>
+          <div><span class="k">مهام شغّالة</span><b id="runningTasks">0</b></div>
+        </div>
+        <div class="sc-actions">
+          <button class="btn tiny danger" id="emergencyStop" title="إيقاف طارئ">⏹ إيقاف</button>
+          <button class="btn tiny ghost" id="resetAgent" title="إعادة تعيين">↺ إعادة</button>
+        </div>
+      </div>
+
+      <!-- Execution mode -->
+      <div class="status-card">
+        <div class="sc-title">وضع التنفيذ</div>
+        <div class="mode-tabs" id="modeTabs">
+          <button class="mode" data-mode="safe" title="تأكيد الحساس/الخطير">آمن</button>
+          <button class="mode" data-mode="auto" title="تنفيذ كل شيء">تلقائي</button>
+          <button class="mode" data-mode="strict" title="تأكيد كل شيء">مُراقب</button>
+          <button class="mode" data-mode="banned" title="منع الخطير">مقيّد</button>
+        </div>
+        <div class="muted small" id="modeHint">safe: تأكيد الحساس/الخطير</div>
+      </div>
+
+      <!-- Live desktop view -->
+      <div class="status-card desktop-card">
+        <div class="sc-title">شاشة حيّة <span class="live-badge">●</span></div>
+        <div class="desktop-view" id="desktopView" title="اضغط لتحديث">
+          <div class="desktop-placeholder">لا توجد شاشة بعد</div>
+        </div>
+        <div class="desktop-foot">
+          <button class="btn tiny ghost" id="refreshDesktop">⟳ لقطة</button>
+          <span class="muted small" id="desktopNote"></span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">المحادثات</div>
+        <div id="convList" class="conv-list">
+          <div class="conv-empty">لا توجد محادثات بعد.</div>
+        </div>
+      </div>
+
+      <div class="sidebar-status">
+        <div class="status-row"><span class="dot ok"></span> <span class="btn-text">العقل: <b id="brainMeta">—</b></span></div>
+        <button class="btn tiny ghost" id="openSettings" style="width:100%;margin-top:8px">🔌 ربط العقل</button>
+        <button class="btn tiny ghost" id="openPermissions" style="width:100%;margin-top:6px">✅ صلاحيات الجهاز</button>
+        <button class="btn tiny ghost" id="openDiagnostics" style="width:100%;margin-top:6px">🩺 التشخيص</button>
+      </div>
+    </aside>
+
+    <!-- Main chat -->
+    <main class="main">
+      <div class="chat" id="chat">
+        <div class="chat-empty" id="chatEmpty">
+          <div class="empty-title">👋 أهلًا بك</div>
+          <p>اكتب هدفًا طبيعيًا، وسأخطّط وأنفّذ على جهازك أمامك — خطوة بخطوة، معًا.</p>
+          <div class="suggestions" id="suggestions">
+            <button class="sug" data-g="أنشئ مشروع Python، ثبّت المتطلبات، شغّل الكود وأصلح أي خطأ">أنشئ مشروع Python وشغّله</button>
+            <button class="sug" data-g="افتح Chrome وابحث عن كذا ثم نزّل الملف وأعد تسميته وضعه في مجلد">تصفّح ونزّل ملف </button>
+            <button class="sug" data-g="رتّب ملفات PDF داخل مجلدات وأعد تسميتها">رتّب ملفات PDF</button>
+            <button class="sug" data-g="ابحث في الملفات عن ما يخص موضوع معين">ابحث في الملفات</button>
+          </div>
+        </div>
+        <div id="chatThread" class="chat-thread hidden"></div>
+
+        <!-- Task timeline -->
+        <div class="timeline-wrap" id="timelineWrap">
+          <div class="tl-head">خط سير المهمة</div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="اكتب رسالتك… (Enter للإرسال، Shift+Enter لسطر جديد)"></textarea>
+          <button class="btn primary" id="send">إرسال ➤</button>
+        </div>
+        <div class="composer-meta">
+          <span id="brainMeta2">—</span>
+          <span class="approval-hint">الحذف/الأوامر الخطرة تتطلب موافقتك</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Settings / brain-connection modal -->
+  <div class="modal-backdrop hidden" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>🔌 ربط العقل (وضع الوكيل)</h2>
+        <button class="btn tiny ghost" id="closeSettings">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small">اربط تطبيقك بنقطة عقل (Arena / OpenAI متوافقة) ليصبح الوكيل هو من يقرّر، أو أبقِه أوفلاين بالمحرك المدمج. تُحفظ محليًا.</p>
+        <label>نقطة Arena / endpoint (اختياري)
+          <input id="setArenaUrl" type="text" placeholder="http://host:port" />
+        </label>
+        <label>مفتاح Arena (اختياري)
+          <input id="setArenaKey" type="password" placeholder="bearer key / token" />
+        </label>
+        <label>نقطة OpenAI متوافقة (اختياري)
+          <input id="setLlmUrl" type="text" placeholder="https://.../v1" />
+        </label>
+        <label>مفتاح OpenAI (اختياري)
+          <input id="setLlmKey" type="password" placeholder="sk-..." />
+        </label>
+        <label>اسم النموذج
+          <input id="setModel" type="text" placeholder="gpt-4o-mini" />
+        </label>
+        <label>وضع الموافقة
+          <select id="setApproval">
+            <option value="safe">safe — تأكيد الحساس/الخطير</option>
+            <option value="auto">auto — تنفيذ كل شيء</option>
+            <option value="strict">strict — تأكيد كل شيء</option>
+            <option value="banned">banned — منع الخطير</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small" id="saveMsg"></span>
+        <button class="btn primary" id="saveSettings">حفظ وربط</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permissions modal -->
+  <div class="modal-backdrop hidden" id="permModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>✅ صلاحيات الوصول لجهازك</h2>
+        <button class="btn tiny ghost" id="closePerm">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small">هنا تمنح الوكيل الإذن بالوصول لجهازك. الأدوات الخطرة (حذف/أوامر) لا تعمل إلا بعد موافقتك. اختر الأذونات التي تحتاجها.</p>
+        <div class="perm-grid" id="permGrid"><div class="muted">تحميل…</div></div>
+        <div class="perm-row">
+          <label><input type="checkbox" id="autoGrant" /> تفويض تلقائي لكل شيء (غير موصى به)</label>
+          <button class="btn tiny ghost" id="refreshPerm">تحديث</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small" id="permMsg"></span>
+        <button class="btn primary" id="savePerm">حفظ الأذونات</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diagnostics modal -->
+  <div class="modal-backdrop hidden" id="diagModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>🩺 التشخيص</h2>
+        <button class="btn tiny ghost" id="closeDiag">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small">فحص حيّ لقدرات النظام والوكيل، مع سجلّ النشاط.</p>
+        <div class="diag-grid" id="diagGrid"><div class="muted">تحميل…</div></div>
+        <div class="diag-log">
+          <div class="sc-title">سجلّ النشاط (آخر 25)</div>
+          <div id="auditList" class="audit-list"><div class="muted">لا يوجد نشاط.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-run wizard -->
+  <div class="modal-backdrop" id="wizardModal">
+    <div class="modal wizard">
+      <div class="modal-head">
+        <h2>👋 مرحبًا — جسر Arena للوكيل المحلي</h2>
+        <button class="btn tiny ghost" id="closeWizard">✕</button>
+      </div>
+      <div class="modal-body">
+        <ol class="wizard-steps">
+          <li><b>العقل (Arena):</b> Arena هي الدماغ. لا تملك واجهة برمجية عامة لمزامنة المحادثة، لذا يفتح التطبيق نافذة متصفح إلى <code>arena.ai</code> وتستعمل الحساب الذي تعرفه.</li>
+          <li><b>الجسر المحلي:</b> التطبيق يكشف واجهة <code>/api/*</code> محليًا. منه يعمل الجسر — وهذا ما يوفّر القدرات على جهازك (ملفات، طرفية، شاشة، متصفح).</li>
+          <li><b>الإذن:</b> الأدوات الخطرة (حذف/أوامر) تتطلب موافقتك عبر نظام الأذونات (Allow Once / Always / Deny).</li>
+          <li><b>أعمل فوق الإنترنت:</b> لأنك تصل إليه عبر الإنترنت، الجسر يعمل عبر الشبكة لكن محميًا بترميز محلي + رمز + فحص الأصل.</li>
+        </ol>
+        <div class="wizard-actions">
+          <button class="btn primary" id="wizardGo">فهمت، لنبدأ ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
