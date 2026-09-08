@@ -269,10 +269,48 @@ function addApproval(payload, evt) {
 }
 function removeApproval() { const b = el("approvalBox"); if (b) b.remove(); }
 
+/* ------------------------------------------------------------- settings / connect brain */
+async function openSettings() {
+  try {
+    const s = await json("/api/settings");
+    el("setArenaUrl").value = s.arena_endpoint || "";
+    el("setArenaKey").value = s.arena_api_key || "";
+    el("setLlmUrl").value = s.llm_base_url || "";
+    el("setLlmKey").value = s.llm_api_key || "";
+    el("setModel").value = s.model || "";
+    el("setApproval").value = s.approval_mode || "safe";
+  } catch (e) {}
+  el("settingsModal").classList.remove("hidden");
+}
+async function saveSettings() {
+  const body = {
+    arena_endpoint: el("setArenaUrl").value.trim(),
+    arena_api_key: el("setArenaKey").value.trim(),
+    llm_base_url: el("setLlmUrl").value.trim(),
+    llm_api_key: el("setLlmKey").value.trim(),
+    model: el("setModel").value.trim(),
+    approval_mode: el("setApproval").value,
+  };
+  try {
+    const s = await json("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    el("brainLabel").textContent = s.brain;
+    el("brainMeta").textContent = s.brain;
+    el("saveMsg").textContent = "تم الحفظ والربط ✓";
+    el("settingsModal").classList.add("hidden");
+  } catch (e) {
+    el("saveMsg").textContent = "خطأ: " + e.message;
+  }
+}
+
 /* ------------------------------------------------------------- UI bind */
 function bindUI() {
   el("send").addEventListener("click", sendMessage);
   el("newChat").addEventListener("click", newConversation);
+  el("openSettings").addEventListener("click", openSettings);
+  el("closeSettings").addEventListener("click", () => el("settingsModal").classList.add("hidden"));
+  el("saveSettings").addEventListener("click", saveSettings);
   const input = el("input");
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }

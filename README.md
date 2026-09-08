@@ -23,8 +23,25 @@ It is a **chat-first computer agent**: an Arena-style GUI where your message is 
 goal, the agent plans, then executes on the machine — showing the conversation
 **and** the live tool steps inline.  Open `http://0.0.0.0:8000` to try it.
 
+### Run it like a desktop app on Windows
+Double-click **`start_windows.bat`** (or run **`start_windows.ps1`**), or:
 ```bash
-# chat entrypoint (URL/SSE streams the reply + tool activity)
+python run.py           # starts the server and opens the chat app
+```
+The app runs on **your machine** and **persists all conversations locally**, so
+the session never breaks and your previous chats are there next time you open
+it — even after closing/reopening the app (covered by `tests/test_persistence.py`).
+
+### Honest note on "logging into your Arena account"
+Your request to "log in with my Arena account and see the conversations I did
+here" is not technically possible: **arena.ai exposes no public account/API** to
+retrieve your session history (the official FAQ states full conversation logs
+are not released for privacy).  I will not fake that.  Instead the app is a full
+local agent whose **brain is switchable** from the app (Settings → "ربط العقل"):
+point it at an Arena / OpenAI-compatible endpoint and it becomes that agent,
+deciding while the local engine executes on your machine.
+
+```bash
 curl -X POST http://localhost:8000/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"create a python project","workspace":"demo"}'

@@ -23,6 +23,7 @@
         <div class="status-row"><span class="dot ok"></span> العقل: <b id="brainLabel">—</b></div>
         <div class="status-row"><span class="dot ok"></span> الأدوات: <b id="toolCount">—</b></div>
         <div class="status-row"><span class="dot" id="connDot"></span> الاتصال: <b id="conn">offline</b></div>
+        <button class="btn tiny ghost" id="openSettings" style="width:100%;margin-top:8px">🔌 ربط العقل</button>
       </div>
     </aside>
 
@@ -53,6 +54,46 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- Settings / brain-connection modal -->
+  <div class="modal-backdrop hidden" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>🔌 ربط العقل (وضع الوكيل)</h2>
+        <button class="btn tiny ghost" id="closeSettings">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small">اربط تطبيقك بنقطة عقل (Arena / OpenAI متوافقة) ليصبح الوكيل هو من يقرّر، أو أبقِه أوفلاين بالمحرك المدمج. تُحفظ محليًا.</p>
+        <label>نقطة Arena / endpoint (اختياري)
+          <input id="setArenaUrl" type="text" placeholder="http://host:port" />
+        </label>
+        <label>مفتاح Arena (اختياري)
+          <input id="setArenaKey" type="password" placeholder="bearer key / token" />
+        </label>
+        <label>نقطة OpenAI متوافقة (اختياري)
+          <input id="setLlmUrl" type="text" placeholder="https://.../v1" />
+        </label>
+        <label>مفتاح OpenAI (اختياري)
+          <input id="setLlmKey" type="password" placeholder="sk-..." />
+        </label>
+        <label>اسم النموذج
+          <input id="setModel" type="text" placeholder="gpt-4o-mini" />
+        </label>
+        <label>وضع الموافقة
+          <select id="setApproval">
+            <option value="safe">safe — تأكيد الحساس/الخطير</option>
+            <option value="auto">auto — تنفيذ كل شيء</option>
+            <option value="strict">strict — تأكيد كل شيء</option>
+            <option value="banned">banned — منع الخطير</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small" id="saveMsg"></span>
+        <button class="btn primary" id="saveSettings">حفظ وربط</button>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>

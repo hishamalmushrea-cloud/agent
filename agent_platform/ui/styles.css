@@ -123,3 +123,18 @@ body {
 
 /* Textarea autosize helper */
 .hidden { display: none !important; }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { width: 480px; max-width: 92vw; background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.modal-head h2 { margin: 0; font-size: 17px; }
+.modal-body { margin-top: 8px; }
+.modal-body label { display: block; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+.modal-body input, .modal-body select {
+  display: block; width: 100%; margin-top: 5px; background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 9px 11px; font-size: 13px;
+}
+.modal-body input:focus, .modal-body select:focus { outline: none; border-color: var(--accent); }
+.modal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.small { font-size: 12px; }
