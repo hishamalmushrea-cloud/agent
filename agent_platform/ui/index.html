@@ -1,150 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Windows Autonomous Computer Agent</title>
+  <title>وكيل الكمبيوتر المستقل — Windows Agent</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div id="app" class="app">
-    <!-- Sidebar -->
+    <!-- Sidebar (conversations) -->
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">🤖</div>
-        <div class="brand-text">
-          <div class="brand-title">Windows Agent</div>
-          <div class="brand-sub">Autonomous Computer Agent</div>
+      <button class="btn primary new-chat" id="newChat">+ محادثة جديدة</button>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">المحادثات</div>
+        <div id="convList" class="conv-list">
+          <div class="conv-empty">لا توجد محادثات بعد.</div>
         </div>
       </div>
 
-      <nav class="nav">
-        <button class="nav-btn active" data-tab="tasks">Tasks</button>
-        <button class="nav-btn" data-tab="tools">Tools</button>
-        <button class="nav-btn" data-tab="workflows">Workflows</button>
-        <button class="nav-btn" data-tab="settings">Settings</button>
-      </nav>
-
       <div class="sidebar-status">
-        <div class="status-row"><span class="dot ok"></span> Engine <b id="provider">—</b></div>
-        <div class="status-row"><span class="dot ok"></span> Tools <b id="toolCount">—</b></div>
-        <div class="status-row"><span class="dot" id="connDot"></span> Live <b id="conn">offline</b></div>
+        <div class="status-row"><span class="dot ok"></span> العقل: <b id="brainLabel">—</b></div>
+        <div class="status-row"><span class="dot ok"></span> الأدوات: <b id="toolCount">—</b></div>
+        <div class="status-row"><span class="dot" id="connDot"></span> الاتصال: <b id="conn">offline</b></div>
       </div>
     </aside>
 
-    <!-- Main -->
+    <!-- Main chat -->
     <main class="main">
-      <!-- Tasks panel -->
-      <section id="panel-tasks" class="panel active">
-        <div class="panel-header">
-          <div>
-            <h1>Tasks</h1>
-            <p class="muted">Give the agent a goal; it will plan, execute, observe, verify and recover.</p>
-          </div>
-          <button class="btn ghost" id="refreshTasks">Refresh</button>
-        </div>
-
-        <div class="split">
-          <!-- Conversation / timeline -->
-          <div class="col col-main">
-            <div class="goal-bar">
-              <input id="goalInput" class="goal-input" type="text"
-                     placeholder='e.g. "Create a python project, install requests, run it and fix any error"'
-                     autocomplete="off" />
-              <button class="btn primary" id="submitGoal">Run ▶</button>
-            </div>
-
-            <div class="task-panel" id="taskPanel">
-              <div class="task-panel-empty" id="taskPanelEmpty">
-                <div class="empty-emoji">🎯</div>
-                <p>Select or create a task to see live agent activity.</p>
-              </div>
-              <div id="taskPanelBody" class="hidden">
-                <div class="task-head">
-                  <div class="task-title" id="taskTitle">—</div>
-                  <span class="badge" id="taskState">—</span>
-                </div>
-                <div class="task-progress">
-                  <div class="progress-label"><span id="progressText">0/0 steps</span>
-                    <div class="progress-actions">
-                      <button class="btn tiny" id="btnCancel">Cancel</button>
-                    </div>
-                  </div>
-                  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-                </div>
-
-                <div class="timeline" id="timeline">
-                  <div class="timeline-empty" id="timelineEmpty">Waiting for the agent to start…</div>
-                </div>
-
-                <div class="approval-box hidden" id="approvalBox">
-                  <div class="approval-msg" id="approvalMsg">⚠ Action requires approval</div>
-                  <div class="approval-btns">
-                    <button class="btn wan" id="btnApprove">Approve</button>
-                    <button class="btn danger" id="btnDeny">Deny</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="terminal">
-              <div class="terminal-head">Terminal · shell output</div>
-              <div class="terminal-body" id="terminalBody">
-                <span class="term-placeholder"># Agent shell output appears here</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Task list -->
-          <div class="col col-side">
-            <h3 class="col-title">Tasks</h3>
-            <div class="task-list" id="taskList">
-              <div class="task-list-empty">No tasks yet. Create one above.</div>
-            </div>
-
-            <h3 class="col-title">Files</h3>
-            <div class="files" id="files">
-              <div class="task-list-empty">File explorer &amp; diffs appear here during a run.</div>
-            </div>
+      <div class="chat" id="chat">
+        <div class="chat-empty" id="chatEmpty">
+          <div class="empty-title">👋 أهلًا بك</div>
+          <p>اكتب هدفًا طبيعيًا، وسأخطّط وأنفّذ على جهازك أمامك — خطوة بخطوة، معًا.</p>
+          <div class="suggestions" id="suggestions">
+            <button class="sug" data-g="أنشئ مشروع Python، ثبّت المتطلبات، شغّل الكود وأصلح أي خطأ">أنشئ مشروع Python وشغّله</button>
+            <button class="sug" data-g="افتح Chrome وابحث عن كذا ثم نزّل الملف وأعد تسميته وضعه في مجلد">تصفّح ونزّل ملف </button>
+            <button class="sug" data-g="رتّب ملفات PDF داخل مجلدات وأعد تسميتها">رتّب ملفات PDF</button>
+            <button class="sug" data-g="ابحث في الملفات عن ما يخص موضوع معين">ابحث في الملفات</button>
           </div>
         </div>
-      </section>
+        <div id="chatThread" class="chat-thread hidden"></div>
+      </div>
 
-      <!-- Tools panel -->
-      <section id="panel-tools" class="panel">
-        <div class="panel-header">
-          <div><h1>Tool Registry</h1>
-            <p class="muted">Every capability the agent can use. The agent discovers these and respects each permission level.</p>
-          </div>
-          <button class="btn ghost" id="refreshTools">Refresh</button>
+      <div class="composer">
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="اكتب رسالتك… (Enter للإرسال، Shift+Enter لسطر جديد)"></textarea>
+          <button class="btn primary" id="send">إرسال ➤</button>
         </div>
-        <div class="tool-grid" id="toolGrid"><div class="muted">Loading…</div></div>
-      </section>
-
-      <!-- Workflows panel -->
-      <section id="panel-workflows" class="panel">
-        <div class="panel-header">
-          <div><h1>Workflows</h1>
-            <p class="muted">Deterministic Agent + Workflow graphs (n8n-inspired).</p></div>
-          <button class="btn ghost" id="refreshWorkflows">Refresh</button>
+        <div class="composer-meta">
+          <span id="brainMeta">—</span>
+          <span class="approval-hint">الحذف/الأوامر الخطرة تتطلب موافقتك</span>
         </div>
-        <div class="wf-grid" id="wfGrid"><div class="muted">Loading…</div></div>
-      </section>
-
-      <!-- Settings panel -->
-      <section id="panel-settings" class="panel">
-        <div class="panel-header"><div><h1>Settings</h1>
-          <p class="muted">Configure the engine via environment variables.</p></div></div>
-        <div class="settings">
-          <div class="setting"><code>AGENT_LLM_BASE_URL</code><span>OpenAI-compatible endpoint (e.g. Arena proxy). Empty = offline heuristic.</span></div>
-          <div class="setting"><code>AGENT_LLM_API_KEY</code><span>API key for the provider (kept local).</span></div>
-          <div class="setting"><code>AGENT_LLM_MODEL</code><span>Model name.</span></div>
-          <div class="setting"><code>AGENT_APPROVAL_MODE</code><span>safe | auto | strict | banned</span></div>
-          <div class="setting"><code>AGENT_WORKSPACE</code><span>Default workspace where the agent works.</span></div>
-          <div class="setting"><code>AGENT_MAX_RETRIES</code><span>Bounded recovery attempts per step.</span></div>
-          <div class="setting"><code>AGENT_PORT</code><span>HTTP port (default 8000).</span></div>
-        </div>
-      </section>
+      </div>
     </main>
   </div>
 

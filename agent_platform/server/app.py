@@ -30,8 +30,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-from agent_platform.models.schemas import Task
-from agent_platform.server.components import build_all
+from agent_platform.config import load_settings, save_settings, settings_to_dict
+from agent_platform.models.schemas import Message, Role, Task, TaskState
+from agent_platform.server import components
+from agent_platform.server.components import build_all, reload_provider
 
 app = FastAPI(title="Windows Autonomous Computer Agent", version="0.1.0")
 
@@ -55,8 +57,25 @@ class CreateTask(BaseModel):
     workspace: str = ""
 
 
+class ChatMessage(BaseModel):
+    message: str
+    conversation_id: str = ""  # optional: continue an existing conversation/task
+    workspace: str = ""
+
+
 class Approval(BaseModel):
     approved: bool = False
+
+
+class SettingsUpdate(BaseModel):
+    arena_endpoint: str = ""
+    arena_api_key: str = ""
+    arena_token: str = ""
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    model: str = ""
+    approval_mode: str = "safe"
+    default_workspace: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +101,66 @@ async def app_js() -> Any:
 # ---------------------------------------------------------------------------
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "provider_name": _c()["provider"].name, "tools": len(_c()["registry"].names())}
+    s = _c()["settings"]
+    return {"ok": True, "provider_name": _c()["provider"].name,
+            "brain": settings_to_dict(s).get("brain", ""),
+            "tools": len(_c()["registry"].names())}
+
+
+@app.get("/api/settings")
+async def get_settings() -> dict[str, Any]:
+    s = _c()["settings"]
+    return settings_to_dict(s)
+
+
+@app.post("/api/settings")
+async def post_settings(body: SettingsUpdate) -> dict[str, Any]:
+    """Persist brain/endpoint settings from the GUI and reload the provider."""
+    s = load_settings()
+    if body.arena_endpoint is not None:
+        s.arena_endpoint = body.arena_endpoint.strip()
+    if body.arena_api_key is not None:
+        s.arena_api_key = body.arena_api_key.strip()
+    if body.arena_token is not None:
+        s.arena_token = body.arena_token.strip()
+    if body.llm_base_url is not None:
+        s.llm_base_url = body.llm_base_url.strip()
+    if body.llm_api_key is not None:
+        s.llm_api_key = body.llm_api_key.strip()
+    if body.model is not None:
+        s.model = body.model.strip() or "gpt-4o-mini"
+    if body.approval_mode is not None:
+        s.approval_mode = body.approval_mode.strip() or "safe"
+    if body.default_workspace is not None:
+        s.default_workspace = body.default_workspace.strip()
+    save_settings(s)
+    # Reload the provider so the change takes effect immediately.
+    reload_provider(s)
+    return settings_to_dict(s)
+
+
+@app.post("/api/chat", status_code=201)
+async def chat(body: ChatMessage) -> dict[str, Any]:
+    """Chat-first entrypoint: turn a message into a goal, run the agent, and
+    stream the conversation (text + tool activity) over the task SSE."""
+    guard = _c()["guard"]
+    message = guard.validate_goal(body.message)
+    if not message.strip():
+        raise HTTPException(400, "message is required")
+    tasks = _c()["tasks"]
+    if body.conversation_id and tasks.get(body.conversation_id):
+        task = tasks.get(body.conversation_id)
+        # Append the new message to the existing conversation and re-run.
+    else:
+        task = tasks.create(goal=message, workspace=body.workspace)
+    task.messages.append(Message(role=Role.USER, content=message))
+    task.goal = message  # latest instruction drives next run
+    task.state = TaskState.PENDING
+    task.result_summary = ""
+    task.touch()
+    tasks._persist(task)
+    await tasks.start(task.id)
+    return {"task_id": task.id, "conversation_id": task.id}
 
 
 @app.get("/api/tools")

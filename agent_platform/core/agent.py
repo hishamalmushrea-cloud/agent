@@ -70,6 +70,13 @@ class Agent:
             task.workspace = workspace
         elif not task.workspace:
             task.workspace = self.settings.workspace_path.as_posix()
+        # Ensure the workspace directory exists (relative workspaces included).
+        try:
+            import os
+
+            os.makedirs(task.workspace, exist_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
         if task.plan is None:
             await self._plan(task)
         start_index = self._cursor.get(task.id, 0)
@@ -194,11 +201,51 @@ class Agent:
             task.result_summary = goal_v.reason
             self.bus.emit_kind(task.id, EventKind.COMPLETED, f"Completed: {goal_v.reason}",
                                payload={"summary": goal_v.reason})
+            await self._final_reply(task)
         else:
             task.state = TaskState.FAILED
             task.errors.append(goal_v.reason or "Goal not verified")
             self.bus.emit_kind(task.id, EventKind.FAILED,
                                f"Goal not fully verified: {goal_v.reason}")
+            await self._final_reply(task)
+
+    async def _final_reply(self, task: Task) -> None:
+        """Produce a natural-language agent reply and surface it in the chat.
+
+        For a real brain (Arena / OpenAI-compatible) we ask it to summarise the
+        run; otherwise we build an honest, factual summary from the observations
+        and verification.  The reply is appended as an assistant message and
+        emitted on the bus so the GUI renders it as a chat bubble.
+        """
+        plan = task.plan
+        steps = plan.steps if plan else []
+        ok_count = sum(1 for s in steps if s.status == "ok")
+        detail = (task.result_summary or (task.errors[-1] if task.errors else ""))
+        strategy = (plan.strategy or "handle this task").rstrip(". ")
+        reply = (
+            f"فهمت المطلوب، وعملت على: **{strategy}**.\n\n"
+            f"أنهيت {ok_count}/{len(steps)} من الخطوات. {detail}"
+        )
+
+        # If a real brain is configured, let it write the reply (best-effort).
+        if self.provider.name != "heuristic":
+            try:
+                sys = ("You are a Windows computer agent. Summarise what you "
+                       "just did concisely and confirm whether the goal was met. "
+                       "Use plain text, 2-3 sentences.")
+                user = (f"Goal: {task.goal}\nCompletion: {task.result_summary}\n"
+                        f"Steps completed: {ok_count}/{len(steps)}\n"
+                        f"Observations: " +
+                        "; ".join(s.observation.summary for s in steps if s.observation)[:1500])
+                reply = self.provider.chat([
+                    {"role": "system", "content": sys},
+                    {"role": "user", "content": user},
+                ]) or reply
+            except Exception:  # noqa: BLE001
+                pass  # fall back to the constructed summary
+
+        msg = self.context.add_message(task, Role.ASSISTANT, reply)
+        self.bus.emit_kind(task.id, EventKind.ASSISTANT, reply, payload={"message_id": msg.id})
 
     async def _choose_action(self, task: Task, step: Any) -> tuple[Optional[str], dict[str, Any]]:
         # Prefer the tool the planner chose.

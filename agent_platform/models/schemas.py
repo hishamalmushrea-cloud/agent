@@ -200,6 +200,7 @@ class EventKind(str, enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    ASSISTANT = "assistant"      # a natural-language reply shown as chat text
     HEARTBEAT = "heartbeat"
     LOG = "log"
 

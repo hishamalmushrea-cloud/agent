@@ -51,3 +51,33 @@ def test_create_task_flow():
 def test_goal_required():
     r = client.post("/api/tasks", json={"goal": ""})
     assert r.status_code == 400
+
+
+def test_chat_creates_conversation():
+    r = client.post("/api/chat", json={"message": "system info", "workspace": "chat_test"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["task_id"] and body["conversation_id"] == body["task_id"]
+    # User message is persisted into the conversation thread.
+    import time
+
+    time.sleep(0.6)
+    d = client.get(f"/api/tasks/{body['task_id']}").json()
+    assert any(m["role"] == "user" for m in d["messages"])
+
+
+def test_chat_requires_message():
+    r = client.post("/api/chat", json={"message": ""})
+    assert r.status_code == 400
+
+
+def test_settings_roundtrip_and_brain_switch():
+    r = client.post("/api/settings", json={
+        "arena_endpoint": "http://127.0.0.1:9400", "arena_api_key": "k", "approval_mode": "safe"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["provider_name"] == "arena"
+    # Turn it back off so we do not leave the test process in a bad state.
+    client.post("/api/settings", json={"arena_endpoint": "", "llm_base_url": ""})
+    h = client.get("/api/health").json()
+    assert h["provider_name"] in ("heuristic", "openai_compatible")

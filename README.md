@@ -19,30 +19,28 @@ gate.
 
 ## 1. What it actually does (live)
 
-Try it (server is running at `http://0.0.0.0:8000`):
+It is a **chat-first computer agent**: an Arena-style GUI where your message is the
+goal, the agent plans, then executes on the machine — showing the conversation
+**and** the live tool steps inline.  Open `http://0.0.0.0:8000` to try it.
 
 ```bash
-curl -X POST http://localhost:8000/api/tasks \
+# chat entrypoint (URL/SSE streams the reply + tool activity)
+curl -X POST http://localhost:8000/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"goal":"create a python project","workspace":"demo"}'
-```
-
-Then watch live activity:
-
-```bash
-curl -N http://localhost:8000/api/tasks/<task_id>/events
+  -d '{"message":"create a python project","workspace":"demo"}'
 ```
 
 A real run produces (observed below):
 
 ```
-task_created → planning → plan_ready(4 steps) → step_started → tool_call →
-tool_result → verified → step_started → wait_for_approval(write_file) →
-approval → tool_call(write_file) → verified → completed
+(chat) user message → assistant reply → [plan] step_started → tool_call → tool_result →
+verified → step_started → wait_for_approval(write_file) → approval → tool_call → verified →
+assistant summary → completed
 ```
 
-That is the **agent loop**, not a chat reply.  And it waits for **human approval**
-before any SENSITIVE/DANGEROUS tool — least privilege by default.
+That is the **agent loop**, not a chat-only reply.  And it waits for **human approval**
+before any SENSITIVE/DANGEROUS tool — least privilege by default.  The brain is
+switchable from the app's Settings (`/api/settings`).
 
 ---
 

@@ -25,6 +25,27 @@ _engine: WorkflowEngine | None = None
 _guard: SecurityGuard | None = None
 
 
+def reload_provider(settings: Settings | None = None) -> dict:
+    """Rebuild the brain provider from current settings (used by the GUI
+    when the user changes the Arena / model endpoint at runtime)."""
+    global _settings, _provider, _agent, _tasks
+    if _settings is None and settings is None:
+        return build_all()
+    if settings is not None:
+        _settings = settings
+    from agent_platform.llm.provider import build_provider
+
+    _provider = build_provider(_settings)
+    # Rebuild the agent with the new provider (keeps registry/tasks/memory).
+    if _tasks is not None:
+        _agent = Agent(_settings, _registry, _provider, _bus)
+        # Re-point the task manager at the new agent (no task loss).
+        from agent_platform.tasks.manager import TaskManager
+
+        _tasks = TaskManager(_agent, _memory, _bus, _settings.storage_path)
+    return _context()
+
+
 def build_all(settings: Settings | None = None) -> dict:
     global _registry, _settings, _provider, _bus, _agent, _memory, _tasks, _engine, _guard
     if _agent is not None:

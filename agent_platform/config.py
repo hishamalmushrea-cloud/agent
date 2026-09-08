@@ -1,14 +1,16 @@
 """Runtime configuration.
 
-Configuration is read from environment variables (with sane defaults) so the
-platform can run without a config file, and so that pointing it at a real
-model endpoint (including an Arena-compatible proxy) is just two env vars.
+Configuration is read from environment variables (with sane defaults) and can
+be persisted/overridden through a local JSON file (``~/.agent_platform/config.json``)
+so the GUI can set the Arena / brain endpoint at runtime without restarting the
+process with new env vars.
 """
 
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
@@ -75,5 +77,66 @@ class Settings:
         return p
 
 
+_overrides_fields = frozenset({
+    "llm_base_url", "llm_api_key", "model", "llm_timeout",
+    "arena_endpoint", "arena_api_key", "arena_token", "arena_timeout",
+    "approval_mode", "default_workspace",
+})
+
+
+def _config_file() -> Path:
+    return Path(os.environ.get("AGENT_CONFIG_FILE", str(Path.home() / ".agent_platform"))) / "config.json"
+
+
 def load_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    # Apply persisted overrides (from a previous GUI save) on top of env defaults.
+    f = _config_file()
+    if f.exists():
+        try:
+            raw = json.loads(f.read_text(encoding="utf-8"))
+            for k in _overrides_fields:
+                if k in raw and raw[k] is not None:
+                    setattr(s, k, raw[k])
+        except Exception:  # noqa: BLE001
+            pass
+    return s
+
+
+def save_settings(s: Settings) -> None:
+    """Persist the overridable fields to the config file (used by the GUI)."""
+    f = _config_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    data = {k: getattr(s, k) for k in _overrides_fields}
+    f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def settings_to_dict(s: Settings) -> dict:
+    return {
+        "llm_base_url": s.llm_base_url,
+        "llm_api_key": s.llm_api_key,
+        "model": s.model,
+        "arena_endpoint": s.arena_endpoint,
+        "arena_api_key": s.arena_api_key,
+        "arena_token": s.arena_token,
+        "approval_mode": s.approval_mode,
+        "default_workspace": s.default_workspace,
+        "provider_name": _provider_name(s),
+        "brain": _brain_label(s),
+    }
+
+
+def _provider_name(s: Settings) -> str:
+    if s.arena_enabled:
+        return "arena"
+    if s.llm_base_url and (s.llm_api_key or "local" in s.llm_base_url or "127.0.0.1" in s.llm_base_url):
+        return "openai_compatible"
+    return "heuristic"
+
+
+def _brain_label(s: Settings) -> str:
+    if s.arena_enabled:
+        return "Arena Agent (live) — you decide, platform executes"
+    if s.llm_base_url:
+        return f"OpenAI-compatible ({s.model})"
+    return "Offline heuristic brain (no endpoint set)"
