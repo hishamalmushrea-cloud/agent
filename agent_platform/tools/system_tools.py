@@ -116,10 +116,28 @@ class RandomTokenTool(Tool):
         return self.ok(token, data={"token": token})
 
 
+class WaitTool(Tool):
+    spec = ToolSpec(
+        name="wait",
+        description="Pause for a number of seconds. Useful to let an app load or a "
+        "UI settle before acting.",
+        category="control",
+        parameters={"seconds": "float (optional, default 1.0)"},
+        permission=PermissionLevel.SAFE,
+    )
+
+    def run(self, seconds: float = 1.0, **kwargs: Any) -> ToolResult:
+        import time
+
+        time.sleep(max(0.0, float(seconds)))
+        return self.ok(f"Waited {seconds}s")
+
+
 ALL_TOOLS: list[type[Tool]] = [
     SystemInfoTool,
     NetworkStatusTool,
     ClipboardTool,
     EnvironmentTool,
     RandomTokenTool,
+    WaitTool,
 ]

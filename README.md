@@ -15,6 +15,15 @@ gate.
 > الخبرة، والتحقق هو نظام الجودة. البنية قابلة للتوسع لإضافة أدوات/مهارات/سير عمل/
 > إضافات/وكلاء دون إعادة البناء.
 
+> **V2 (Master Engineering Specification) is implemented.**  Read
+> [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for the honest
+> capability table (what Arena can/can't do), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+> for the layering, and [`docs/V2_STATUS.md`](docs/V2_STATUS.md) for the
+> per-phase status and verified end-to-end flows.  The agent works **over the
+> internet** (Arena brain + bridge), is protected by localhost/token/origin
+> security, and ships as a professional GUI with a first-run wizard and an
+> installer.
+
 ---
 
 ## 1. What it actually does (live)
@@ -267,22 +276,26 @@ pip install playwright && playwright install chromium   # real browser control
 ```bash
 python -m pytest
 ```
-33 tests pass (registry, tools, permission policy, verifier, agent loop,
-approval flow, recovery, memory, workflow engine, HTTP server).
+81 tests pass (registry, tools, permission policy, verifier, agent loop,
+approval flow, recovery, memory, workflow engine, HTTP server, **and the V2
+core**: permission matrix, secret-redacting audit log, action executor,
+AgentRuntime facade, verification, recovery, security defaults).
 
 ---
 
 ## 10. Honest limitations & what's next
 
-- **Vision/OCR layer** (screenshot → action) is a documented gateway, not yet a
-  running tool — the model calls it "last resort".
+- **Vision/OCR layer** is built and registered (`screenshot`, `ocr`,
+  `read_screen`) with an honest `PlaceholderOCR` fallback when no OCR engine is
+  installed.  On Windows it uses WindowsOCR / Tesseract.
 - **LLM-driven self-debugging** (auto-fix arbitrary code) is deliberately
   out of the engine and belongs to a pluggable skill that requires a real LLM;
   the platform does **not** fake an AI fix.
-- **Arena Agent Mode** has no public SDK (see §3); the engine is ours, the
-  brain is swappable.
+- **Arena Agent Mode** has no public conversation-sync API; the engine is ours,
+  the brain is Arena via a browser window + local grants (honest — see
+  `docs/CAPABILITY_MATRIX.md`).
 - Windows-only tools are written and guarded but **not verifiable in this Linux
-  sandbox** — they return an honest "not on Windows" here.
+  sandbox** — they return an honest `LIMITATION` in `/api/diagnostics` here.
 
 Future/pluggable: new tools, skills, workflows, plugins, sub-agents
 (Planner/Executor/Research/Reviewer/Debugger/Security), multi-agent orchestration

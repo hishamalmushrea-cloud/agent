@@ -128,6 +128,7 @@ def register_all() -> ToolRegistry:
             pass
 
     from agent_platform.tools import file_tools, process_tools, shell_tools, system_tools
+    from agent_platform.vision import vision_agent
 
     for cls in file_tools.ALL_TOOLS:
         _try(cls())
@@ -136,6 +137,8 @@ def register_all() -> ToolRegistry:
     for cls in shell_tools.ALL_TOOLS:
         _try(cls())
     for cls in system_tools.ALL_TOOLS:
+        _try(cls())
+    for cls in vision_agent.ALL_TOOLS:
         _try(cls())
 
     # Windows-specific tools (import guarded; they no-op on non-Windows).

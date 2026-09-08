@@ -277,6 +277,75 @@ class CreateDirectoryTool(Tool):
             return self.fail(str(exc))
 
 
+class RenameFileTool(Tool):
+    spec = ToolSpec(
+        name="rename_file",
+        description="Rename a file or directory within the same parent directory.",
+        category="file",
+        parameters={"path": "str (required)", "new_name": "str (required)"},
+        permission=PermissionLevel.SENSITIVE,
+    )
+
+    def run(self, path: str, new_name: str, **kwargs: Any) -> ToolResult:
+        try:
+            p = _resolve_readable(path)
+            if not p.exists():
+                return self.fail(f"Path does not exist: {p}")
+            new_path = p.with_name(new_name)
+            p.rename(new_path)
+            return self.ok(f"Renamed {p} -> {new_path}")
+        except Exception as exc:  # noqa: BLE001
+            return self.fail(str(exc))
+
+
+class CompressTool(Tool):
+    spec = ToolSpec(
+        name="compress",
+        description="Archive a file or folder into a zip. Returns the archive path.",
+        category="file",
+        parameters={"source": "str (required)", "destination": "str (optional)"},
+        permission=PermissionLevel.SAFE,
+    )
+
+    def run(self, source: str, destination: str = "", **kwargs: Any) -> ToolResult:
+        try:
+            import shutil
+
+            s = _resolve_readable(source)
+            if not s.exists():
+                return self.fail(f"Source does not exist: {s}")
+            dest = _resolve_readable(destination) if destination else s.with_name(s.name + ".zip")
+            archive = shutil.make_archive(str(dest.with_suffix("")), "zip", str(s.parent), s.name)
+            return self.ok(f"Compressed to {archive}", data={"path": archive})
+        except Exception as exc:  # noqa: BLE001
+            return self.fail(str(exc))
+
+
+class ExtractTool(Tool):
+    spec = ToolSpec(
+        name="extract",
+        description="Extract a zip archive to a destination folder.",
+        category="file",
+        parameters={"archive": "str (required)", "destination": "str (optional)"},
+        permission=PermissionLevel.SAFE,
+    )
+
+    def run(self, archive: str, destination: str = "", **kwargs: Any) -> ToolResult:
+        try:
+            import zipfile
+
+            a = _resolve_readable(archive)
+            if not a.exists():
+                return self.fail(f"Archive does not exist: {a}")
+            dest = _resolve_readable(destination) if destination else a.parent / a.stem
+            dest.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(a) as z:
+                z.extractall(dest)
+            return self.ok(f"Extracted {a.name} to {dest}", data={"path": str(dest)})
+        except Exception as exc:  # noqa: BLE001
+            return self.fail(str(exc))
+
+
 ALL_TOOLS: list[type[Tool]] = [
     ReadFileTool,
     WriteFileTool,
@@ -284,7 +353,10 @@ ALL_TOOLS: list[type[Tool]] = [
     MoveFileTool,
     CopyFileTool,
     DeleteFileTool,
+    RenameFileTool,
     ListDirTool,
     SearchFilesTool,
     CreateDirectoryTool,
+    CompressTool,
+    ExtractTool,
 ]

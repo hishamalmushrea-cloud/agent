@@ -53,12 +53,19 @@ def heuristic_plan(goal: str, tool_specs: list[dict[str, Any]]) -> dict[str, Any
         add("Understand the goal (system info)", "system_info", {})
         add("Create project directory", "create_directory",
             {"path": "app"}, verification="directory exists")
-        add("Write main.py placeholder", "write_file",
-            {"path": "app/main.py", "content": 'def main():\n    print("hello from agent")\n\n\nif __name__ == "__main__":\n    main()\n'},
+        # Build a concrete main.py: if the goal asks for a sum (e.g. "sum 1..100")
+        # generate a program that computes it and asserts the known answer.
+        content = _python_content_for(goal)
+        add("Write main.py", "write_file",
+            {"path": "app/main.py", "content": content},
             verification="file exists")
+        if _has(goal, "run", "execute", "test", "verify", "تشغيل"):
+            add("Run main.py", "shell",
+                {"command": "python3 app/main.py", "cwd": _extract_path(goal, context(goal))},
+                verification="exit code == 0 and output contains the expected value")
         add("Optional: list the created project", "list_dir",
             {"path": "app", "recursive": True})
-        return {"strategy": "Scaffold a small Python project and verify its files.", "steps": steps}
+        return {"strategy": "Create a Python project, generate main.py, and run it.", "steps": steps}
 
     # --- run / build / test ---------------------------------------------
     if _has(goal, "run", "execute", "test", "build", "pip", "install"):
@@ -118,6 +125,30 @@ def heuristic_action(messages: list[dict[str, Any]]) -> dict[str, Any]:
 
 def context(goal: str) -> dict[str, Any]:
     return {"cwd": "."}
+
+
+def _python_content_for(goal: str) -> str:
+    """Generate a concrete main.py from the goal.
+
+    If the goal asks for a sum (e.g. \"sum of 1 to 100\") we generate a real
+    program that computes it and asserts the known value, so the "run" step has
+    something genuine to verify.  Otherwise fall back to a hello program.
+    """
+    g = goal.lower()
+    # Detect a numeric range sum like "1 to 100" / "1..100" / "1 - 100".
+    m = re.search(r"(\d+)\s*(?:to|through|\.\.|\.\.\.)\s*(\d+)", g)
+    if m and _has(g, "sum", "add", "جمع", "مجموع"):
+        start, end = int(m.group(1)), int(m.group(2))
+        known = sum(range(start, end + 1))
+        lo, hi = min(start, end), max(start, end)
+        return (
+            'def main():\n'
+            f'    total = sum(range({lo}, {hi + 1}))\n'
+            f'    print(f"Sum of {lo} to {hi} = {{total}}")\n'
+            f'    assert total == {known}, f"unexpected sum {{total}}"\n\n\n'
+            'if __name__ == "__main__":\n    main()\n'
+        )
+    return 'def main():\n    print("hello from agent")\n\n\nif __name__ == "__main__":\n    main()\n'
 
 
 def _infer_command(goal: str) -> str:

@@ -4,6 +4,8 @@
 let currentConv = null;      // current conversation/task id
 let eventSource = null;
 let threadOpen = false;      // has a thread been started
+let statusTimer = null;
+let desktopTimer = null;
 const kindIcon = {
   planning: "🧭", plan_ready: "🧭", step_started: "▶️", tool_call: "🔧",
   tool_result: "📦", verifying: "✅", verified: "✅", waiting_approval: "⚠️",
@@ -32,14 +34,78 @@ async function boot() {
     el("brainLabel").textContent = h.brain || h.provider_name;
     el("toolCount").textContent = h.tools;
     el("brainMeta").textContent = h.brain || "";
+    el("brainMeta2").textContent = h.brain || "";
     setConn(true);
   } catch (e) { setConn(false); }
   await refreshConvs();
+  await refreshStatus();
   bindUI();
+  startStatusPolling();
+  startDesktopPolling();
+  maybeShowWizard();
 }
 function setConn(online) {
-  el("connDot").className = "dot " + (online ? "ok" : "err");
+  el("connDot") && (el("connDot").className = "dot " + (online ? "ok" : "err"));
   el("conn").textContent = online ? "live" : "offline";
+}
+
+function maybeShowWizard() {
+  // Show the first-run wizard only once (per browser).
+  if (!localStorage.getItem("aw_wizard_seen")) {
+    el("wizardModal").classList.remove("hidden");
+  }
+}
+
+/* ------------------------------------------------------------- status */
+async function refreshStatus() {
+  try {
+    const r = await json("/api/runtime");
+    const st = (r.status || "IDLE").toUpperCase();
+    el("agentStatus").textContent = st;
+    const dot = el("statusDot");
+    dot.className = "pulse";
+    if (st === "STOPPED") dot.className = "pulse stopped";
+    else if (st === "EXECUTING") dot.className = "pulse running";
+    else if (st === "WAITING_FOR_USER") dot.className = "pulse warn";
+    else if (st === "IDLE" || st === "COMPLETED") dot.className = "pulse ok";
+  } catch (e) { /* ignore */ }
+  try {
+    const tasks = await json("/api/tasks");
+    const running = tasks.filter(t => ["planning","executing","waiting","verifying","recovering"].includes(t.state)).length;
+    el("runningTasks").textContent = running;
+  } catch (e) { /* ignore */ }
+}
+
+function startStatusPolling() {
+  if (statusTimer) return;
+  statusTimer = setInterval(refreshStatus, 3000);
+}
+
+/* ------------------------------------------------------------- desktop */
+async function refreshDesktop() {
+  const view = el("desktopView");
+  const note = el("desktopNote");
+  try {
+    const res = await fetch("/api/desktop");
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("image")) {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      view.innerHTML = `<img src="${url}" alt="live desktop" />`;
+      note.textContent = "آخر لقطة " + new Date().toLocaleTimeString();
+      return;
+    }
+    const j = await res.json();
+    view.innerHTML = `<div class="desktop-placeholder">${escapeHtml(j.error || "غير متاح")}</div>`;
+    note.textContent = "";
+  } catch (e) {
+    view.innerHTML = `<div class="desktop-placeholder">غير متاح</div>`;
+    note.textContent = "";
+  }
+}
+function startDesktopPolling() {
+  if (desktopTimer) return;
+  desktopTimer = setInterval(refreshDesktop, 7000);
 }
 
 /* ------------------------------------------------------------- conversations */
@@ -65,6 +131,8 @@ function newConversation() {
   el("chatEmpty").classList.remove("hidden");
   el("chatThread").classList.add("hidden");
   el("chatThread").innerHTML = "";
+  el("timelineWrap") && (el("timelineWrap").style.display = "none");
+  el("timeline").innerHTML = "";
   if (eventSource) { eventSource.close(); eventSource = null; }
   el("input").focus();
 }
@@ -74,7 +142,6 @@ async function openConv(id) {
   refreshConvs();
   const detail = await json("/api/tasks/" + id);
   showChat();
-  // Rebuild the thread from existing messages + current plan.
   const thread = el("chatThread");
   thread.innerHTML = "";
   if (detail.messages) {
@@ -83,9 +150,13 @@ async function openConv(id) {
       else if (m.role === "assistant") addAssistantMsg(m.content);
     }
   }
-  // Render plan steps as collapsible activity.
+  // Render plan steps as collapsible activity + timeline.
   if (detail.plan && detail.plan.steps) {
-    for (const s of detail.plan.steps) addStep(s, {});
+    el("timelineWrap").style.display = "";
+    for (const s of detail.plan.steps) {
+      addStep(s, {});
+      addTimeline(s);
+    }
   }
   if (detail.state === "waiting") addApproval(detail, {});
   openSSE(id);
@@ -105,7 +176,6 @@ async function sendMessage() {
   input.value = ""; autoSize();
   addUserMsg(text);
   showChat();
-  // Refresh conversation list after a moment (to show the new conv).
   setTimeout(refreshConvs, 400);
   try {
     const res = await json("/api/chat", {
@@ -113,6 +183,7 @@ async function sendMessage() {
       body: JSON.stringify({ message: text, conversation_id: currentConv || "" }),
     });
     if (!currentConv) { currentConv = res.task_id; }
+    el("timelineWrap").style.display = "";
     openSSE(res.task_id);
   } catch (e) {
     addAssistantMsg("⚠️ تعذّر بدء المهمة: " + e.message);
@@ -140,12 +211,15 @@ function renderEvent(evt) {
   } else if (evt.kind === "step_started") {
     const s = (evt.payload || {}).step || {};
     addStep(s, evt.payload);
+    addTimeline({ ...s, _status: "running" });
   } else if (evt.kind === "tool_call") {
     updateStepStatus(evt.payload.tool, "running");
   } else if (evt.kind === "tool_result") {
     updateStepWithResult(evt.payload);
+    updateTimelineStatus(evt.payload.tool);
   } else if (evt.kind === "verified") {
     markLastOk();
+    markTimelineOk(evt.payload.step || evt.payload);
   } else if (evt.kind === "waiting_approval") {
     addApproval(evt.payload, evt);
   } else if (evt.kind === "approval_resolved") {
@@ -153,6 +227,7 @@ function renderEvent(evt) {
   } else if (evt.kind === "completed" || evt.kind === "failed") {
     addRunResult(evt.kind, evt.message);
     refreshConvs();
+    refreshStatus();
   } else if (evt.kind === "recovering") {
     addNote("🛠️ " + evt.message, "warn");
   }
@@ -189,7 +264,6 @@ function addStep(spec, payload) {
       <span class="step-status running">⏳</span>
     </div>
     <div class="step-body">
-      ${tool ? "" : ""}
       <div class="step-out">${escapeHtml(spec.verification || "")}</div>
       <pre></pre>
     </div>`;
@@ -198,7 +272,6 @@ function addStep(spec, payload) {
   return s;
 }
 function updateStepStatus(tool, status) {
-  // Find the step with this tool's name (last added).
   const steps = el("chatThread").querySelectorAll(".step");
   for (let i = steps.length - 1; i >= 0; i--) {
     const toolName = steps[i].querySelector(".tool-name");
@@ -213,7 +286,6 @@ function updateStepStatus(tool, status) {
 function updateStepWithResult(payload) {
   const obs = payload.observation || {};
   const tool = payload.tool || obs.tool;
-  // Find the step whose tool matches; attach the output.
   const steps = el("chatThread").querySelectorAll(".step");
   for (let i = steps.length - 1; i >= 0; i--) {
     const toolName = steps[i].querySelector(".tool-name");
@@ -228,7 +300,6 @@ function updateStepWithResult(payload) {
   }
 }
 function markLastOk() {
-  // Mark the last running step as ok if still running.
   const steps = el("chatThread").querySelectorAll(".step-status.running, .step-status.recovering");
   const last = steps[steps.length - 1];
   if (last) { last.textContent = "✓ ok"; last.className = "step-status ok"; }
@@ -250,7 +321,6 @@ function addRunResult(kind, msg) {
 function addApproval(payload, evt) {
   const t = el("chatThread");
   const tool = payload.tool || "أداة";
-  const args = JSON.stringify(payload.arguments || {});
   const d = document.createElement("div");
   d.className = "approval-inline";
   d.id = "approvalBox";
@@ -269,6 +339,41 @@ function addApproval(payload, evt) {
 }
 function removeApproval() { const b = el("approvalBox"); if (b) b.remove(); }
 
+/* ------------------------------------------------------------- timeline */
+function addTimeline(step) {
+  const tl = el("timeline");
+  const id = "tl_" + (step.id || "s" + Math.random().toString(36).slice(2));
+  const d = document.createElement("div");
+  d.className = "tl-item";
+  d.id = id;
+  const tool = step.tool ? `<span class="tl-tool">${escapeHtml(step.tool)}</span>` : "";
+  d.innerHTML = `
+    <div class="tl-line">${escapeHtml(step.title || step.description || "خطوة")} ${tool}</div>
+    <div class="tl-status">${escapeHtml(step._status || step.status || "pending")}</div>`;
+  tl.appendChild(d);
+  return id;
+}
+function updateTimelineStatus(tool) {
+  const items = el("timeline").querySelectorAll(".tl-item");
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].querySelector(".tl-tool") && items[i].querySelector(".tl-tool").textContent === tool) {
+      items[i].classList.add("running");
+      items[i].querySelector(".tl-status").textContent = "running";
+      return;
+    }
+  }
+}
+function markTimelineOk(stepRef) {
+  const items = el("timeline").querySelectorAll(".tl-item.running");
+  const last = items[items.length - 1];
+  if (last) { last.classList.add("done"); last.classList.remove("running"); last.querySelector(".tl-status").textContent = "ok"; }
+}
+function markTimelineFailed(stepRef) {
+  const items = el("timeline").querySelectorAll(".tl-item.running");
+  const last = items[items.length - 1];
+  if (last) { last.classList.add("failed"); last.classList.remove("running"); last.querySelector(".tl-status").textContent = "failed"; }
+}
+
 /* ------------------------------------------------------------- settings / connect brain */
 async function openSettings() {
   try {
@@ -282,6 +387,56 @@ async function openSettings() {
   } catch (e) {}
   el("settingsModal").classList.remove("hidden");
 }
+async function saveSettings() {
+  const body = {
+    arena_endpoint: el("setArenaUrl").value.trim(),
+    arena_api_key: el("setArenaKey").value.trim(),
+    llm_base_url: el("setLlmUrl").value.trim(),
+    llm_api_key: el("setLlmKey").value.trim(),
+    model: el("setModel").value.trim(),
+    approval_mode: el("setApproval").value,
+  };
+  try {
+    const s = await json("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    el("brainLabel").textContent = s.brain;
+    el("brainMeta").textContent = s.brain;
+    el("brainMeta2").textContent = s.brain;
+    el("saveMsg").textContent = "تم الحفظ والربط ✓";
+    el("settingsModal").classList.add("hidden");
+    setModeTabs(el("setApproval").value);
+  } catch (e) {
+    el("saveMsg").textContent = "خطأ: " + e.message;
+  }
+}
+
+/* ------------------------------------------------------------- execution mode */
+function setModeTabs(mode) {
+  const tab = document.querySelector(`.mode[data-mode="${mode}"]`);
+  document.querySelectorAll(".mode").forEach(m => m.classList.remove("active"));
+  if (tab) tab.classList.add("active");
+  const hints = { safe: "safe: تأكيد الحساس/الخطير", auto: "auto: تنفيذ كل شيء", strict: "strict: تأكيد كل شيء", banned: "banned: منع الخطير" };
+  el("modeHint").textContent = hints[mode] || mode;
+}
+async function changeMode(mode) {
+  try {
+    await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approval_mode: mode }) });
+    setModeTabs(mode);
+    refreshStatus();
+  } catch (e) {}
+}
+
+/* ------------------------------------------------------------- emergency stop / reset */
+async function emergencyStop() {
+  if (!confirm("إيقاف طارئ؟ هذا سيمنع أي إجراء جديد.")) return;
+  try { await json("/api/stop", { method: "POST" }); refreshStatus(); } catch (e) {}
+}
+async function resetAgent() {
+  try { await json("/api/reset", { method: "POST" }); refreshStatus(); } catch (e) {}
+}
+
 /* ------------------------------------------------------------- permissions */
 async function openPermissions() {
   try {
@@ -302,7 +457,6 @@ async function openPermissions() {
     el("permModal").classList.remove("hidden");
   } catch (e) { el("permMsg").textContent = "خطأ: " + e.message; }
 }
-
 async function savePermissions() {
   const checks = document.querySelectorAll(".perm-check");
   let okAll = true;
@@ -316,7 +470,6 @@ async function savePermissions() {
       });
     } catch (e) { okAll = false; }
   }
-  // Auto toggle (approve everything).
   await json("/api/mcp/grants", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tool: "", auto_approve: el("autoGrant").checked }),
@@ -324,26 +477,31 @@ async function savePermissions() {
   el("permMsg").textContent = okAll ? "تم حفظ الأذونات ✓" : "حدث خطأ أثناء الحفظ";
 }
 
-/* ------------------------------------------------------------- settings */
-async function saveSettings() {
-  const body = {
-    arena_endpoint: el("setArenaUrl").value.trim(),
-    arena_api_key: el("setArenaKey").value.trim(),
-    llm_base_url: el("setLlmUrl").value.trim(),
-    llm_api_key: el("setLlmKey").value.trim(),
-    model: el("setModel").value.trim(),
-    approval_mode: el("setApproval").value,
-  };
+/* ------------------------------------------------------------- diagnostics */
+async function openDiagnostics() {
+  el("diagModal").classList.remove("hidden");
   try {
-    const s = await json("/api/settings", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
-    el("brainLabel").textContent = s.brain;
-    el("brainMeta").textContent = s.brain;
-    el("saveMsg").textContent = "تم الحفظ والربط ✓";
-    el("settingsModal").classList.add("hidden");
+    const d = await json("/api/diagnostics");
+    const grid = el("diagGrid");
+    grid.innerHTML = (d.results || []).map(r => `
+      <div class="diag-item ${r.ok ? "ok" : "bad"}">
+        <div class="dc-name">${escapeHtml(r.component)}</div>
+        <div class="dc-status">${r.ok ? "✓ متاح" : "✗ غير متاح"}${r.note ? " — " + escapeHtml(r.note) : ""}</div>
+      </div>`).join("");
+    const a = await json("/api/audit");
+    const list = el("auditList");
+    if (!a.entries || !a.entries.length) {
+      list.innerHTML = '<div class="muted">لا يوجد نشاط.</div>';
+    } else {
+      list.innerHTML = a.entries.slice(-25).reverse().map(e => `
+        <div class="audit-entry">
+          <span class="ae-time">${escapeHtml(e.time)}</span> ·
+          <span class="ae-act">${escapeHtml(e.action)}</span> —
+          ${escapeHtml(e.result)}${e.error ? " · " + escapeHtml(e.error) : ""}
+        </div>`).join("");
+    }
   } catch (e) {
-    el("saveMsg").textContent = "خطأ: " + e.message;
+    el("diagGrid").innerHTML = '<div class="muted">خطأ: ' + escapeHtml(e.message) + "</div>";
   }
 }
 
@@ -358,6 +516,18 @@ function bindUI() {
   el("closePerm").addEventListener("click", () => el("permModal").classList.add("hidden"));
   el("savePerm").addEventListener("click", savePermissions);
   el("refreshPerm").addEventListener("click", openPermissions);
+  el("emergencyStop").addEventListener("click", emergencyStop);
+  el("resetAgent").addEventListener("click", resetAgent);
+  el("openDiagnostics").addEventListener("click", openDiagnostics);
+  el("closeDiag").addEventListener("click", () => el("diagModal").classList.add("hidden"));
+  el("refreshDesktop").addEventListener("click", refreshDesktop);
+  el("desktopView").addEventListener("click", refreshDesktop);
+  // Mode tabs.
+  document.querySelectorAll(".mode").forEach(m => m.addEventListener("click", () => changeMode(m.dataset.mode)));
+  // Wizard.
+  el("closeWizard").addEventListener("click", () => { el("wizardModal").classList.add("hidden"); localStorage.setItem("aw_wizard_seen", "1"); });
+  el("wizardGo").addEventListener("click", () => { el("wizardModal").classList.add("hidden"); localStorage.setItem("aw_wizard_seen", "1"); });
+
   const input = el("input");
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -365,6 +535,11 @@ function bindUI() {
   input.addEventListener("input", autoSize);
   document.querySelectorAll(".sug").forEach(b =>
     b.addEventListener("click", () => { el("input").value = b.dataset.g; autoSize(); sendMessage(); }));
+
+  // Initialize the mode tabs from current settings.
+  (async () => {
+    try { const s = await json("/api/settings"); setModeTabs(s.approval_mode || "safe"); } catch (e) {}
+  })();
 }
 function autoSize() {
   const t = el("input");

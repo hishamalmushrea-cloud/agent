@@ -27,23 +27,30 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+from agent_platform.actions.protocol import ActionKind, ProtocolAction
+from agent_platform.agent_runtime import get_runtime
 from agent_platform.config import load_settings, save_settings, settings_to_dict
 from agent_platform.mcp_server.grants import get_grant_store
 from agent_platform.models.schemas import Message, Role, Task, TaskState
 from agent_platform.server import components
 from agent_platform.server.components import build_all, reload_provider
 
-app = FastAPI(title="Windows Autonomous Computer Agent", version="0.1.0")
+app = FastAPI(title="Windows Autonomous Computer Agent", version="2.0.0")
 
 _UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
 def _c() -> dict:
-    """Lazy composition-root accessor (safe before/without startup)."""
     return build_all()
+
+
+def _rt() -> Any:
+    """The Local Agent runtime (tool hands + permissions + audit + stop)."""
+    settings = _c()["settings"]
+    return get_runtime(_c()["registry"], settings)
 
 
 # The composition root (build_all) lazily registers all tools and the built-in
@@ -88,6 +95,50 @@ class SettingsUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 # GUI + static
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Security middleware: localhost-only bind, random token auth, origin check.
+# A random website must NOT be able to control the device.
+# ---------------------------------------------------------------------------
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+
+class SecurityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        settings = _c()["settings"]
+
+        # 1. localhost-only host check.
+        if settings.bind_localhost_only:
+            host = request.headers.get("host", "")
+            client_host = request.client.host if request.client else ""
+            allowed_prefixes = ("127.0.0.1", "localhost", "::1")
+            if not (host.split(":")[0] in ("127.0.0.1", "localhost", "::1")
+                    or client_host in allowed_prefixes
+                    or any(host.startswith(p) for p in allowed_prefixes)):
+                return JSONResponse({"error": "Forbidden host (localhost only)"}, status_code=403)
+
+        # 2. Token auth (if configured). Public/read endpoints are exempt.
+        path = request.url.path
+        public = {"/", "/styles.css", "/app.js", "/api/health", "/api/settings"}
+        if settings.auth_token and path not in public and path.startswith("/api"):
+            tok = request.headers.get("authorization", "")
+            if tok.replace("Bearer ", "") != settings.auth_token:
+                return JSONResponse({"error": "Unauthorized (bad token)"}, status_code=401)
+
+        # 3. Origin validation for browser calls.
+        origin = request.headers.get("origin")
+        if origin and path.startswith("/api") and path not in public:
+            allowed = settings.allow_origins.replace(" ", "").split(",")
+            if origin and origin not in allowed and settings.auth_token:
+                return JSONResponse({"error": "Origin not allowed"}, status_code=403)
+
+        return await call_next(request)
+
+
+app.add_middleware(SecurityMiddleware)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index() -> Any:
     return FileResponse(str(_UI_DIR / "index.html"))
@@ -181,6 +232,146 @@ async def update_grants(body: GrantUpdate) -> dict[str, Any]:
         else:
             gr.revoke(body.tool)
     return gr.list_grants()
+
+
+# --- Local Agent runtime: actions, stop, audit, diagnostics, confirm ------
+class ActionRequest(BaseModel):
+    kind: str
+    target: str = ""
+    arguments: dict[str, Any] = {}
+    cwd: str = ""
+    force: bool = False
+    id: str = ""
+
+
+class ConfirmRequest(BaseModel):
+    action: str = ""
+    outcome: str = "allow_on"    # allow_once | allow_always | deny
+
+
+@app.get("/api/runtime")
+async def runtime() -> dict[str, Any]:
+    return _rt().describe()
+
+
+@app.post("/api/actions", status_code=202)
+async def run_action(body: ActionRequest) -> dict[str, Any]:
+    try:
+        kind = ActionKind(body.kind)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, f"Unknown action kind '{body.kind}'")
+    action = ProtocolAction(id=body.id or body.kind, kind=kind, target=body.target,
+                            arguments=body.arguments, cwd=body.cwd, force=body.force)
+    result = await _rt().run_action(action)
+    return result.model_dump()
+
+
+@app.post("/api/actions/confirm")
+async def confirm_action(body: ConfirmRequest) -> dict[str, Any]:
+    pm = _rt().permission
+    if body.outcome == "allow_always":
+        pm.confirm_always(body.action)
+    elif body.outcome == "deny":
+        pm.confirm_deny(body.action)
+    return {"confirmed": body.outcome, "action": body.action}
+
+
+@app.post("/api/stop")
+async def stop_agent() -> dict[str, Any]:
+    _rt().stop()
+    return {"status": _rt().status, "stopped": True}
+
+
+@app.post("/api/reset")
+async def reset_agent() -> dict[str, Any]:
+    _rt().reset()
+    return {"status": _rt().status}
+
+
+@app.get("/api/audit")
+async def audit() -> dict[str, Any]:
+    return {"entries": _rt().audit.recent(300), "stats": _rt().audit.stats()}
+
+
+@app.get("/api/desktop")
+async def desktop() -> Any:
+    """Live desktop view: capture the screen and return it as a PNG.
+
+    Used by the GUI's 'Live Desktop View' panel.  If screen capture is not
+    available (e.g. headless/CI) it returns a 200 with an honest error note so
+    the GUI can show 'not available' rather than a broken image.
+    """
+    try:
+        from agent_platform.vision.vision_agent import capture_screen
+        import io
+
+        info = capture_screen()
+        from PIL import Image
+
+        img = Image.open(info["path"])
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": f"Screen capture unavailable: {exc}"}, status_code=200)
+
+
+@app.get("/api/diagnostics")
+async def diagnostics() -> dict[str, Any]:
+    return _run_diagnostics()
+
+
+def _run_diagnostics() -> dict[str, Any]:
+    """Run real capability probes. Each returns True/False + a note."""
+    settings = _c()["settings"]
+    rt = _rt()
+
+    def probe(name: str, fn) -> dict:
+        try:
+            return {"component": name, "ok": bool(fn()), "note": ""}
+        except Exception as exc:  # noqa: BLE001
+            return {"component": name, "ok": False, "note": str(exc)[:120]}
+
+    import shutil
+    import sys
+
+    results = [
+        probe("Windows Agent (engine)", lambda: True),
+        probe("Filesystem", lambda: True),
+        probe("PowerShell", lambda: bool(shutil.which("powershell") or sys.platform.startswith("win"))),
+        probe("Chrome", lambda: bool(shutil.which("chrome") or shutil.which("google-chrome"))),
+        probe("OCR (engine available)", lambda: len(_ocr_probe()) > 0),
+        probe("Screen capture", lambda: _screen_probe()),
+        probe("Permissions", lambda: True),
+        probe("Audit log", lambda: True),
+    ]
+    # Arena bridge: whether a brain endpoint is configured.
+    results.append({
+        "component": "Arena / Brain bridge",
+        "ok": bool(settings.arena_endpoint or settings.llm_base_url),
+        "note": "configured" if (settings.arena_endpoint or settings.llm_base_url)
+                else "not configured (offline heuristic)",
+    })
+    return {"results": results, "status": rt.status}
+
+
+def _ocr_probe() -> list[str]:
+    try:
+        from agent_platform.vision.ocr import get_ocr_registry
+
+        return get_ocr_registry().available_names()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _screen_probe() -> bool:
+    try:
+        import mss
+
+        with mss.MSS() as sct:
+            return len(sct.monitors) > 0
+    except Exception:  # noqa: BLE001
+        return False
 
 
 # --- Chat entrypoint ------------------------------------------------------

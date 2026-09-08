@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from agent_platform.server.app import app
 
-client = TestClient(app)
+client = TestClient(app, base_url="http://localhost")
 
 
 def test_health():

@@ -11,6 +11,11 @@ pytest>=8.0
 mcp<2
 pywebview>=5.0
 
+# Vision (the agent's "eyes"): screen capture + OCR
+Pillow>=10.0
+mss>=9.0
+pytesseract>=0.3.10
+
 # Optional / Windows / web (import guarded; comment to install on the target machine)
 # playwright>=1.40          # real browser control for agent tools
 # pywinauto>=0.6.8          # Windows UI Automation backend (Windows only)

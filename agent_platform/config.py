@@ -56,8 +56,12 @@ class Settings:
     )
 
     # --- Server -----------------------------------------------------------
-    host: str = field(default_factory=lambda: _env("AGENT_HOST", "0.0.0.0"))
+    host: str = field(default_factory=lambda: _env("AGENT_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: int(_env("AGENT_PORT", "8000")))
+    # Local-agent security: localhost-only by default, random token, origin check.
+    bind_localhost_only: bool = field(default_factory=lambda: _env("AGENT_BIND_LOCAL", "1") == "1")
+    auth_token: str = field(default_factory=lambda: _env("AGENT_AUTH_TOKEN"))
+    allow_origins: str = field(default_factory=lambda: _env("AGENT_ALLOW_ORIGINS", "http://127.0.0.1,http://localhost"))
 
     # --- Storage ----------------------------------------------------------
     storage_dir: str = field(

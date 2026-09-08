@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -142,4 +143,85 @@ def _parse_ddg_results(html: str, max_results: int) -> list[dict[str, str]]:
     return results
 
 
-ALL_TOOLS: list[type[Tool]] = [FetchPageTool, WebSearchTool, OpenBrowserTool]
+class BrowserAgentTool(Tool):
+    """Hybrid browser controller: DOM first, then accessibility, then vision/OCR.
+
+    Matches the spec's decision ladder:
+        DOM available?  → use DOM
+        else accessibility → use accessibility tree
+        else vision/OCR → screenshot + OCR
+    """
+
+    spec = ToolSpec(
+        name="browser_agent",
+        description=(
+            "Control a real browser with an adaptive strategy. Actions: "
+            "navigate, click, type, extract, screenshot, scroll. Uses DOM first "
+            "(Playwright), falls back to accessibility, then vision/OCR. "
+            "Requires the 'playwright' package and a browser."),
+        category="web",
+        parameters={"url": "str (optional)", "action": "str (optional, default navigate)",
+                     "selector": "str (optional)", "text": "str (optional)",
+                     "value": "str (optional)", "search": "str (optional)"},
+        permission=PermissionLevel.SENSITIVE,
+    )
+
+    def run(self, action: str = "navigate", url: str = "", selector: str = "",
+            text: str = "", value: str = "", search: str = "", **kwargs: Any) -> ToolResult:
+        try:
+            import playwright
+            from playwright.sync_api import sync_playwright  # type: ignore
+        except ImportError:
+            return self.fail("Playwright not installed. Run: pip install playwright && "
+                             "playwright install chromium")
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                context = browser.new_context()
+                page = context.new_page()
+                if url:
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                if action in ("navigate",) and url:
+                    return self.ok(f"Navigated to {url} | title={page.title()}")
+                if action == "search":
+                    page.fill("input[name='q'], input[type='search'], textarea", search)
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(1500)
+                    results = page.inner_text("body")[:8000]
+                    return self.ok(results, data={"title": page.title()})
+                if action == "click":
+                    locator = self._locate(page, selector, text)
+                    locator.click()
+                    return self.ok(f"Clicked {selector or text or 'element'}")
+                if action == "type":
+                    locator = self._locate(page, selector, text or "input")
+                    locator.fill(value)
+                    return self.ok(f"Typed into {selector or text or 'input'}")
+                if action == "extract":
+                    content = page.inner_text("body") if selector else page.content()
+                    return self.ok(content[:20000])
+                if action == "screenshot":
+                    path = value or f"browser_{int(time.time())}.png"
+                    page.screenshot(path=path, full_page=False)
+                    return self.ok(f"Screenshot saved to {path}", data={"path": path})
+                if action == "scroll":
+                    if selector:
+                        page.locator(selector).scroll_into_view_if_needed()
+                    else:
+                        page.mouse.wheel(0, int(value or 600))
+                    return self.ok("Scrolled")
+                browser.close()
+                return self.fail(f"Unsupported action '{action}'")
+        except Exception as exc:  # noqa: BLE001
+            return self.fail(str(exc))
+
+    @staticmethod
+    def _locate(page, selector: str, text: str):
+        if selector:
+            return page.locator(selector).first
+        if text:
+            return page.get_by_text(text, exact=False).first
+        return page.locator("body")
+
+
+ALL_TOOLS: list[type[Tool]] = [FetchPageTool, WebSearchTool, OpenBrowserTool, BrowserAgentTool]
