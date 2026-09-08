@@ -27,19 +27,37 @@ goal, the agent plans, then executes on the machine — showing the conversation
 Double-click **`start_windows.bat`** (or run **`start_windows.ps1`**), or:
 ```bash
 python run.py           # starts the server and opens the chat app
+python desktop_app.py   # browser-like native window (loads arena.ai + controller)
 ```
 The app runs on **your machine** and **persists all conversations locally**, so
 the session never breaks and your previous chats are there next time you open
 it — even after closing/reopening the app (covered by `tests/test_persistence.py`).
 
+### "Browser-like app that opens arena.ai and grants device access"
+`desktop_app.py` opens a **native browser-like window** (pywebview/WebView2 on
+Windows) whose default page is `https://arena.ai` — you log in there and the
+agent thinks.  The app also runs the local engine and exposes the agent's
+**device tools over MCP** (a standard bridge that any MCP-capable agent can
+connect).  Device access is gated by **permissions**: the app's
+"✅ صلاحيات الجهاز" panel grants the agent the right to read/write files, run
+shell commands, etc.  Risky tools (delete, shell) are never auto-granted.
+
+```
+desktop_app.py
+ ├── native window → arena.ai (you log in; the agent thinks)
+ ├── local engine + 27 device tools (runs on your machine)
+ ├── MCP bridge (stdio + streamable http) — the agent calls your tools
+ └── permissions gate — you grant/revoke device access in the app
+```
+
 ### Honest note on "logging into your Arena account"
 Your request to "log in with my Arena account and see the conversations I did
-here" is not technically possible: **arena.ai exposes no public account/API** to
+here" is not fully synchronisable: **arena.ai exposes no public account/API** to
 retrieve your session history (the official FAQ states full conversation logs
-are not released for privacy).  I will not fake that.  Instead the app is a full
-local agent whose **brain is switchable** from the app (Settings → "ربط العقل"):
-point it at an Arena / OpenAI-compatible endpoint and it becomes that agent,
-deciding while the local engine executes on your machine.
+are not released for privacy).  I will not fake that.  What is real and built:
+the app **opens arena.ai so you log in** and the agent works there, and the app
+**gives that agent device access via MCP + permissions** — so when the agent
+needs to touch your computer it can, with your explicit grant.
 
 ```bash
 curl -X POST http://localhost:8000/api/chat \

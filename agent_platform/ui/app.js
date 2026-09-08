@@ -282,6 +282,49 @@ async function openSettings() {
   } catch (e) {}
   el("settingsModal").classList.remove("hidden");
 }
+/* ------------------------------------------------------------- permissions */
+async function openPermissions() {
+  try {
+    const info = await json("/api/mcp/info");
+    const grants = info.grants || { tools: [], auto_approve: false };
+    const grid = el("permGrid");
+    grid.innerHTML = info.tools.map(t => `
+      <div class="perm-card">
+        <div class="pc-name">${escapeHtml(t.name)}</div>
+        <div class="pc-cat">${escapeHtml(t.category)} · ${escapeHtml(t.permission)}</div>
+        <div class="pc-row">
+          <label>${escapeHtml(t.permission === "safe" ? "آمن" : t.permission === "sensitive" ? "حساس" : "خطير")}</label>
+          <input type="checkbox" class="perm-check" data-tool="${escapeHtml(t.name)}"
+                 ${grants.tools.includes(t.name) ? "checked" : ""} />
+        </div>
+      </div>`).join("");
+    el("autoGrant").checked = !!grants.auto_approve;
+    el("permModal").classList.remove("hidden");
+  } catch (e) { el("permMsg").textContent = "خطأ: " + e.message; }
+}
+
+async function savePermissions() {
+  const checks = document.querySelectorAll(".perm-check");
+  let okAll = true;
+  for (const c of checks) {
+    const tool = c.dataset.tool;
+    const granted = c.checked;
+    try {
+      await json("/api/mcp/grants", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tool, granted }),
+      });
+    } catch (e) { okAll = false; }
+  }
+  // Auto toggle (approve everything).
+  await json("/api/mcp/grants", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tool: "", auto_approve: el("autoGrant").checked }),
+  });
+  el("permMsg").textContent = okAll ? "تم حفظ الأذونات ✓" : "حدث خطأ أثناء الحفظ";
+}
+
+/* ------------------------------------------------------------- settings */
 async function saveSettings() {
   const body = {
     arena_endpoint: el("setArenaUrl").value.trim(),
@@ -311,6 +354,10 @@ function bindUI() {
   el("openSettings").addEventListener("click", openSettings);
   el("closeSettings").addEventListener("click", () => el("settingsModal").classList.add("hidden"));
   el("saveSettings").addEventListener("click", saveSettings);
+  el("openPermissions").addEventListener("click", openPermissions);
+  el("closePerm").addEventListener("click", () => el("permModal").classList.add("hidden"));
+  el("savePerm").addEventListener("click", savePermissions);
+  el("refreshPerm").addEventListener("click", openPermissions);
   const input = el("input");
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }

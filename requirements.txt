@@ -7,6 +7,10 @@ httpx>=0.27
 # Testing
 pytest>=8.0
 
+# Device-access bridge (MCP) + desktop browser-like window
+mcp<2
+pywebview>=5.0
+
 # Optional / Windows / web (import guarded; comment to install on the target machine)
 # playwright>=1.40          # real browser control for agent tools
 # pywinauto>=0.6.8          # Windows UI Automation backend (Windows only)

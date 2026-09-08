@@ -138,3 +138,13 @@ body {
 .modal-body input:focus, .modal-body select:focus { outline: none; border-color: var(--accent); }
 .modal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
 .small { font-size: 12px; }
+
+/* Permissions */
+.perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; max-height: 300px; overflow-y: auto; }
+.perm-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+.perm-card .pc-name { font-family: var(--mono); font-size: 12px; }
+.perm-card .pc-cat { font-size: 11px; color: var(--muted); }
+.perm-card .pc-row { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.perm-card label { font-size: 11px; color: var(--muted); }
+.perm-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.perm-row label { font-size: 13px; color: var(--muted); }

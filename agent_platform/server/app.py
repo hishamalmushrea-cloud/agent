@@ -31,6 +31,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from agent_platform.config import load_settings, save_settings, settings_to_dict
+from agent_platform.mcp_server.grants import get_grant_store
 from agent_platform.models.schemas import Message, Role, Task, TaskState
 from agent_platform.server import components
 from agent_platform.server.components import build_all, reload_provider
@@ -65,6 +66,12 @@ class ChatMessage(BaseModel):
 
 class Approval(BaseModel):
     approved: bool = False
+
+
+class GrantUpdate(BaseModel):
+    tool: str = ""
+    granted: bool = False
+    auto_approve: bool = False
 
 
 class SettingsUpdate(BaseModel):
@@ -139,6 +146,44 @@ async def post_settings(body: SettingsUpdate) -> dict[str, Any]:
     return settings_to_dict(s)
 
 
+# --- Device-access grants (MCP bridge) ------------------------------------
+@app.get("/api/mcp/info")
+async def mcp_info() -> dict[str, Any]:
+    """Describe the MCP device bridge: how to connect it and what tools exist."""
+    gr = get_grant_store()
+    registry = _c()["registry"]
+    specs = registry.list_specs()
+    return {
+        "transport": ["stdio", "streamable-http"],
+        "endpoint": "/mcp",
+        "tools": [
+            {"name": s.name, "category": s.category, "permission": s.permission.value,
+             "granted": gr.has(s.name)}
+            for s in specs
+        ],
+        "grants": gr.list_grants(),
+    }
+
+
+@app.get("/api/mcp/grants")
+async def get_grants() -> dict[str, Any]:
+    return get_grant_store().list_grants()
+
+
+@app.post("/api/mcp/grants")
+async def update_grants(body: GrantUpdate) -> dict[str, Any]:
+    gr = get_grant_store()
+    if body.auto_approve:
+        gr.set_auto(True)
+    elif body.tool:
+        if body.granted:
+            gr.grant(body.tool)
+        else:
+            gr.revoke(body.tool)
+    return gr.list_grants()
+
+
+# --- Chat entrypoint ------------------------------------------------------
 @app.post("/api/chat", status_code=201)
 async def chat(body: ChatMessage) -> dict[str, Any]:
     """Chat-first entrypoint: turn a message into a goal, run the agent, and

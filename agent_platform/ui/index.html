@@ -24,6 +24,7 @@
         <div class="status-row"><span class="dot ok"></span> الأدوات: <b id="toolCount">—</b></div>
         <div class="status-row"><span class="dot" id="connDot"></span> الاتصال: <b id="conn">offline</b></div>
         <button class="btn tiny ghost" id="openSettings" style="width:100%;margin-top:8px">🔌 ربط العقل</button>
+        <button class="btn tiny ghost" id="openPermissions" style="width:100%;margin-top:6px">✅ صلاحيات الجهاز</button>
       </div>
     </aside>
 
@@ -92,6 +93,28 @@
       <div class="modal-foot">
         <span class="muted small" id="saveMsg"></span>
         <button class="btn primary" id="saveSettings">حفظ وربط</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permissions modal -->
+  <div class="modal-backdrop hidden" id="permModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>✅ صلاحيات الوصول لجهازك</h2>
+        <button class="btn tiny ghost" id="closePerm">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small">هنا تمنح الوكيل الإذن بالوصول لجهازك. الأدوات الخطرة (حذف/أوامر) لا تعمل إلا بعد موافقتك. اختر الأذونات التي تحتاجها.</p>
+        <div class="perm-grid" id="permGrid"><div class="muted">تحميل…</div></div>
+        <div class="perm-row">
+          <label><input type="checkbox" id="autoGrant" /> تفويض تلقائي لكل شيء (غير موصى به)</label>
+          <button class="btn tiny ghost" id="refreshPerm">تحديث</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small" id="permMsg"></span>
+        <button class="btn primary" id="savePerm">حفظ الأذونات</button>
       </div>
     </div>
   </div>
