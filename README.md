@@ -1,3 +1,14 @@
+# agent
+
+[![GitHub Repo stars](https://img.shields.io/github/stars/hishamalmushrea-cloud/agent?style=social)](https://github.com/hishamalmushrea-cloud/agent)
+[![GitHub](https://img.shields.io/github/license/hishamalmushrea-cloud/agent)](https://github.com/hishamalmushrea-cloud/agent/blob/main/LICENSE)
+[![Trendshift](https://trendshift.io/api/badge/repositories/4119)](https://trendshift.io/)
+[![Docs Website](https://img.shields.io/badge/Docs-Website-blue?style=for-the-badge&logo=readthedocs)](https://github.com/hishamalmushrea-cloud/agent)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/)
+[![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/hishamalmushrea-cloud?style=social)](https://x.com/hishamalmushrea-cloud)
+
+---
+
 # 🤖 Windows Autonomous Computer Agent (`agent_platform`)
 
 A modular, extensible **computer agent platform** for Windows — not a chatbot.
